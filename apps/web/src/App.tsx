@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { MobileNav } from '@/components/layout/mobile-nav'
 import Login from '@/pages/Login'
 import AuthCallback from '@/pages/AuthCallback'
+import Onboarding from '@/pages/Onboarding'
 import Dashboard from '@/pages/Dashboard'
 import Tracking from '@/pages/Tracking'
 import Progress from '@/pages/Progress'
@@ -18,7 +19,11 @@ function ProtectedLayout() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) navigate('/login', { replace: true })
+      if (!session) {
+        navigate('/login', { replace: true })
+      } else if (!session.user.user_metadata?.onboarded) {
+        navigate('/onboarding', { replace: true })
+      }
       setChecking(false)
     })
 
@@ -54,6 +59,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route element={<ProtectedLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/tracking" element={<Tracking />} />

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { StatCard } from '@/components/ui/stat-card'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
@@ -8,25 +8,52 @@ import { OnboardingPanel } from '@/components/onboarding/onboarding-panel'
 import { MacroBars } from '@/components/dashboard/macro-bars'
 import { PlanBlocks } from '@/components/dashboard/plan-blocks'
 import { calculatePrescription } from '@/lib/metabolic-engine'
-import type { UserProfile, MetabolicPrescription } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
+import type { UserProfile, MetabolicPrescription, ActivityLevel, GoalType, Symptom } from '@/lib/types'
 
-const defaultProfile: UserProfile = {
-  age: 46,
+const fallbackProfile: UserProfile = {
+  age: 35,
   sex: 'female',
-  heightInches: 66,
-  weightLbs: 214,
-  bodyFatPercent: 42,
-  waistInches: 42,
+  heightInches: 65,
+  weightLbs: 160,
+  bodyFatPercent: 28,
+  waistInches: 34,
   activityLevel: 'sedentary',
   goal: 'moderateLoss',
-  onGlp1: true,
-  symptoms: ['nausea', 'poorIntake'],
-  conditions: ['Prediabetes', 'Hypertension'],
+  onGlp1: false,
+  symptoms: [],
+  conditions: [],
 }
 
 export default function Dashboard() {
-  const [profile, setProfile] = useState<UserProfile>(defaultProfile)
-  const [showOnboarding, setShowOnboarding] = useState(true)
+  const [profile, setProfile] = useState<UserProfile>(fallbackProfile)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return
+      const { data } = await supabase
+        .from('user_health_profiles')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single()
+      if (data) {
+        setProfile({
+          age: data.age,
+          sex: data.sex as 'male' | 'female',
+          heightInches: data.height_inches,
+          weightLbs: data.weight_lbs,
+          bodyFatPercent: data.body_fat_percent ?? 28,
+          waistInches: data.waist_inches ?? 34,
+          activityLevel: data.activity_level as ActivityLevel,
+          goal: data.goal as GoalType,
+          onGlp1: data.on_glp1,
+          symptoms: (data.symptoms ?? []) as Symptom[],
+          conditions: data.conditions ?? [],
+        })
+      }
+    })
+  }, [])
 
   const rx: MetabolicPrescription = useMemo(() => calculatePrescription(profile), [profile])
 
