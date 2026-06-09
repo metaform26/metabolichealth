@@ -110,7 +110,10 @@ export default function Onboarding() {
 
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      const msg =
+        err instanceof Error ? err.message :
+        (err as { message?: string })?.message ?? JSON.stringify(err)
+      setError(msg)
       setSaving(false)
     }
   }
