@@ -59,7 +59,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <Topbar eyebrow="Metabolic Goals" title="Your Prescription" />
+      <Topbar eyebrow="Metabolic Goals" title="Your Personalized Goal" />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {showOnboarding && (

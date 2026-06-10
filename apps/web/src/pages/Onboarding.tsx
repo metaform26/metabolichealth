@@ -272,7 +272,10 @@ export default function Onboarding() {
               <Field label="Are you on a GLP-1 / weight-loss medication?">
                 <div className="grid grid-cols-2 gap-3">
                   {[true, false].map((v) => (
-                    <button key={String(v)} type="button" onClick={() => update('onGlp1', v)}
+                    <button key={String(v)} type="button" onClick={() => {
+                        update('onGlp1', v)
+                        if (!v) update('symptoms', [])
+                      }}
                       className={`py-2.5 rounded-xl border text-sm font-semibold transition-all ${
                         profile.onGlp1 === v
                           ? 'bg-teal-50 border-teal-300 text-teal-700'
@@ -284,19 +287,21 @@ export default function Onboarding() {
                   ))}
                 </div>
               </Field>
-              <Field label="Current symptoms (select all that apply)">
-                <div className="space-y-2">
-                  {SYMPTOM_OPTIONS.map(({ value, label }) => (
-                    <label key={value}
-                      className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
-                      <input type="checkbox" className="w-4 h-4 accent-teal-600"
-                        checked={profile.symptoms.includes(value)}
-                        onChange={() => toggleSymptom(value)} />
-                      <span className="text-sm text-slate-700">{label}</span>
-                    </label>
-                  ))}
-                </div>
-              </Field>
+              {profile.onGlp1 && (
+                <Field label="Current symptoms (select all that apply)">
+                  <div className="space-y-2">
+                    {SYMPTOM_OPTIONS.map(({ value, label }) => (
+                      <label key={value}
+                        className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
+                        <input type="checkbox" className="w-4 h-4 accent-teal-600"
+                          checked={profile.symptoms.includes(value)}
+                          onChange={() => toggleSymptom(value)} />
+                        <span className="text-sm text-slate-700">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </Field>
+              )}
               <Field label="Health conditions (optional)">
                 <textarea
                   rows={2}
