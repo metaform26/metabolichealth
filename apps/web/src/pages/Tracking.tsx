@@ -552,9 +552,9 @@ export default function Tracking() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Steps',       value: stepsLogged.toLocaleString(), sub: 'Wearable import' },
-            { label: 'Sleep',       value: '6.8 hr',   sub: 'Apple Health / Fitbit' },
-            { label: 'Heart Rate',  value: '74 bpm',   sub: 'Resting estimate' },
-            { label: 'Glucose',     value: '108 mg/dL',sub: 'Optional CGM' },
+            { label: 'Sleep',       value: '—',   sub: 'Apple Health / Fitbit' },
+            { label: 'Heart Rate',  value: '—',   sub: 'Resting estimate' },
+            { label: 'Glucose',     value: '—',sub: 'Optional CGM' },
           ].map(({ label, value, sub }) => (
             <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4 flex flex-col justify-between min-h-[100px] shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>

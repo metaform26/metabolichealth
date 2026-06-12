@@ -20,7 +20,7 @@ const INITIAL_INTEGRATIONS: Integration[] = [
     icon: 'H',
     name: 'Apple HealthKit',
     description: 'Steps, sleep, heart rate, workouts, active calories, and hydration.',
-    connected: true,
+    connected: false,
     color: 'bg-rose-500',
   },
   {
@@ -36,7 +36,7 @@ const INITIAL_INTEGRATIONS: Integration[] = [
     icon: 'S',
     name: 'Smart Scale',
     description: 'Weight, body fat percentage, lean mass, and trend history.',
-    connected: true,
+    connected: false,
     color: 'bg-violet-500',
   },
   {
@@ -44,7 +44,7 @@ const INITIAL_INTEGRATIONS: Integration[] = [
     icon: 'G',
     name: 'CGM Device',
     description: 'Glucose trends for diabetes, prediabetes, insulin resistance, or GLP-1 care.',
-    connected: true,
+    connected: false,
     color: 'bg-amber-500',
   },
   {
@@ -57,50 +57,22 @@ const INITIAL_INTEGRATIONS: Integration[] = [
   },
 ]
 
-function generateMetrics(integrations: Integration[]) {
-  const healthKitOn = integrations.find((i) => i.id === 'healthkit')?.connected
-  const scaleOn = integrations.find((i) => i.id === 'scale')?.connected
-  const cgmOn = integrations.find((i) => i.id === 'cgm')?.connected
-  const fitbitOn = integrations.find((i) => i.id === 'fitbit')?.connected
-
-  return {
-    steps: healthKitOn || fitbitOn ? '8,241' : '—',
-    sleep: healthKitOn || fitbitOn ? '7h 14m' : '—',
-    heartRate: healthKitOn || fitbitOn ? '64 bpm' : '—',
-    exerciseCalories: healthKitOn || fitbitOn ? '342 kcal' : '—',
-    weight: scaleOn ? '213.4 lbs' : '—',
-    glucose: cgmOn ? '94 mg/dL' : '—',
-  }
+const EMPTY_METRICS = {
+  steps: '—',
+  sleep: '—',
+  heartRate: '—',
+  exerciseCalories: '—',
+  weight: '—',
+  glucose: '—',
 }
 
 export default function Devices() {
   const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS)
-  const [metrics, setMetrics] = useState(() => generateMetrics(INITIAL_INTEGRATIONS))
-  const [syncingId, setSyncingId] = useState<string | null>(null)
-  const [synced, setSynced] = useState(false)
 
   const connectedCount = integrations.filter((i) => i.connected).length
 
   function toggleConnection(id: string) {
-    setSyncingId(id)
-    setTimeout(() => {
-      setIntegrations((prev) => {
-        const updated = prev.map((i) => (i.id === id ? { ...i, connected: !i.connected } : i))
-        setMetrics(generateMetrics(updated))
-        return updated
-      })
-      setSyncingId(null)
-    }, 800)
-  }
-
-  function handleSync() {
-    setSyncingId('all')
-    setSynced(false)
-    setTimeout(() => {
-      setMetrics(generateMetrics(integrations))
-      setSyncingId(null)
-      setSynced(true)
-    }, 1200)
+    setIntegrations((prev) => prev.map((i) => (i.id === id ? { ...i, connected: !i.connected } : i)))
   }
 
   return (
@@ -111,26 +83,17 @@ export default function Devices() {
 
         {/* Live Metrics */}
         <section>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Live device data</p>
-              <h2 className="text-lg font-bold text-slate-900">Today&apos;s Metrics</h2>
-            </div>
-            <button
-              onClick={handleSync}
-              disabled={syncingId === 'all'}
-              className="text-xs font-semibold text-teal-700 border border-teal-200 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
-            >
-              {syncingId === 'all' ? 'Syncing…' : synced ? '✓ Synced' : '↻ Sync now'}
-            </button>
+          <div className="mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Live device data</p>
+            <h2 className="text-lg font-bold text-slate-900">Today&apos;s Metrics</h2>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <StatCard label="Steps" value={metrics.steps} sub="Today" />
-            <StatCard label="Sleep" value={metrics.sleep} sub="Last night" />
-            <StatCard label="Heart Rate" value={metrics.heartRate} sub="Resting avg" />
-            <StatCard label="Exercise Cal." value={metrics.exerciseCalories} sub="Active burn" accent />
-            <StatCard label="Weight" value={metrics.weight} sub="Smart scale" />
-            <StatCard label="Glucose" value={metrics.glucose} sub="CGM reading" />
+            <StatCard label="Steps" value={EMPTY_METRICS.steps} sub="Today" />
+            <StatCard label="Sleep" value={EMPTY_METRICS.sleep} sub="Last night" />
+            <StatCard label="Heart Rate" value={EMPTY_METRICS.heartRate} sub="Resting avg" />
+            <StatCard label="Exercise Cal." value={EMPTY_METRICS.exerciseCalories} sub="Active burn" accent />
+            <StatCard label="Weight" value={EMPTY_METRICS.weight} sub="Smart scale" />
+            <StatCard label="Glucose" value={EMPTY_METRICS.glucose} sub="CGM reading" />
           </div>
         </section>
 
@@ -164,18 +127,13 @@ export default function Devices() {
                     </div>
                     <button
                       onClick={() => toggleConnection(integration.id)}
-                      disabled={syncingId === integration.id}
-                      className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 ${
+                      className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
                         integration.connected
                           ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
                           : 'bg-teal-700 text-white hover:bg-teal-800'
                       }`}
                     >
-                      {syncingId === integration.id
-                        ? '…'
-                        : integration.connected
-                        ? 'Connected'
-                        : 'Connect'}
+                      {integration.connected ? 'Connected' : 'Connect'}
                     </button>
                   </div>
                 </CardContent>
