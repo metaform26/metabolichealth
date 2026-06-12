@@ -1,11 +1,12 @@
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { NumberInput } from '@/components/ui/number-input'
 import { Camera, Pencil, Trash2, Dumbbell, CheckSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -138,6 +139,33 @@ interface MealLog {
   fiber: number | null
 }
 
+interface DailyTotals {
+  calories: number
+  protein: number
+  steps: number
+  water: number
+}
+
+const EMPTY_DAILY_TOTALS: DailyTotals = { calories: 0, protein: 0, steps: 0, water: 0 }
+
+// Keyed by local date, so a new day always starts back at 0. Manual entries
+// and future device-sync updates (e.g. Apple Health step counts) both just
+// write to this same per-day record.
+function todayKey(): string {
+  const d = new Date()
+  return `daily-tracking-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function loadDailyTotals(): DailyTotals {
+  try {
+    const raw = localStorage.getItem(todayKey())
+    if (raw) return { ...EMPTY_DAILY_TOTALS, ...JSON.parse(raw) }
+  } catch {
+    // localStorage unavailable or value corrupted — fall back to a fresh day
+  }
+  return EMPTY_DAILY_TOTALS
+}
+
 // ─── Adherence Ring ────────────────────────────────────────────────────────────
 
 function AdherenceRing({
@@ -174,11 +202,18 @@ function AdherenceRing({
 const TARGETS = { calories: 1498, protein: 149, steps: 8000, waterOz: 80 }
 
 export default function Tracking() {
-  // Sliders
-  const [calorieLogged, setCalorieLogged] = useState(1480)
-  const [proteinLogged, setProteinLogged] = useState(118)
-  const [stepsLogged, setStepsLogged] = useState(7200)
-  const [waterLogged, setWaterLogged] = useState(64)
+  // Today's totals — reset to 0 each new day, persisted in localStorage for the rest of the day
+  const [calorieLogged, setCalorieLogged] = useState(() => loadDailyTotals().calories)
+  const [proteinLogged, setProteinLogged] = useState(() => loadDailyTotals().protein)
+  const [stepsLogged, setStepsLogged] = useState(() => loadDailyTotals().steps)
+  const [waterLogged, setWaterLogged] = useState(() => loadDailyTotals().water)
+
+  useEffect(() => {
+    localStorage.setItem(
+      todayKey(),
+      JSON.stringify({ calories: calorieLogged, protein: proteinLogged, steps: stepsLogged, water: waterLogged })
+    )
+  }, [calorieLogged, proteinLogged, stepsLogged, waterLogged])
 
   // Meal log
   const [mealLogs, setMealLogs] = useState<MealLog[]>([])
@@ -363,9 +398,19 @@ export default function Tracking() {
                       <span>{label}</span>
                       <span className="text-slate-700">{value.toLocaleString()} {unit} <span className="text-slate-400 font-normal">/ {target.toLocaleString()}</span></span>
                     </div>
-                    <input type="range" min={0} max={max} value={value}
-                      onChange={(e) => set(Number(e.target.value))}
-                      className="w-full accent-teal-600 h-2 rounded-full" />
+                    <div className="flex items-center gap-3">
+                      <input type="range" min={0} max={max} value={value}
+                        onChange={(e) => set(Number(e.target.value))}
+                        className="w-full accent-teal-600 h-2 rounded-full" />
+                      <NumberInput
+                        min={0}
+                        max={max}
+                        value={value}
+                        onValueChange={(v) => set(Math.min(max, Math.max(0, v)))}
+                        suffix={unit}
+                        className="w-28 shrink-0 py-1.5"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
