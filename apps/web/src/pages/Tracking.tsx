@@ -138,6 +138,7 @@ interface MealLog {
   carbs: number | null
   fat: number | null
   fiber: number | null
+  photo?: string
 }
 
 interface DailyTotals {
@@ -150,10 +151,12 @@ interface DailyTotals {
 const EMPTY_DAILY_TOTALS: DailyTotals = { calories: 0, protein: 0, steps: 0, water: 0 }
 
 const DAILY_TOTALS_PREFIX = 'daily-tracking-'
+const DAILY_MEALS_PREFIX = 'daily-meals-'
 
 interface HistoryEntry {
   date: string // YYYY-MM-DD
   totals: DailyTotals
+  meals: MealLog[]
 }
 
 // Keyed by local date, so a new day always starts back at 0. Manual entries
@@ -169,6 +172,10 @@ function todayKey(): string {
   return `${DAILY_TOTALS_PREFIX}${todayDateString()}`
 }
 
+function todayMealsKey(): string {
+  return `${DAILY_MEALS_PREFIX}${todayDateString()}`
+}
+
 function loadDailyTotals(): DailyTotals {
   try {
     const raw = localStorage.getItem(todayKey())
@@ -179,26 +186,78 @@ function loadDailyTotals(): DailyTotals {
   return EMPTY_DAILY_TOTALS
 }
 
+function loadDailyMeals(): MealLog[] {
+  try {
+    const raw = localStorage.getItem(todayMealsKey())
+    if (raw) return JSON.parse(raw)
+  } catch {
+    // localStorage unavailable or value corrupted — fall back to a fresh day
+  }
+  return []
+}
+
+function dateFromKey(key: string | null, prefix: string): string | null {
+  if (!key?.startsWith(prefix)) return null
+  const date = key.slice(prefix.length)
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
+}
+
 function loadHistoryEntries(): HistoryEntry[] {
-  const entries: HistoryEntry[] = []
+  const dates = new Set<string>()
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (!key?.startsWith(DAILY_TOTALS_PREFIX)) continue
-      const date = key.slice(DAILY_TOTALS_PREFIX.length)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
-      const raw = localStorage.getItem(key)
-      if (!raw) continue
-      try {
-        entries.push({ date, totals: { ...EMPTY_DAILY_TOTALS, ...JSON.parse(raw) } })
-      } catch {
-        // skip corrupted entry
-      }
+      const date = dateFromKey(key, DAILY_TOTALS_PREFIX) ?? dateFromKey(key, DAILY_MEALS_PREFIX)
+      if (date) dates.add(date)
     }
   } catch {
     // localStorage unavailable
   }
+
+  const entries: HistoryEntry[] = []
+  for (const date of dates) {
+    let totals = EMPTY_DAILY_TOTALS
+    let meals: MealLog[] = []
+    try {
+      const rawTotals = localStorage.getItem(`${DAILY_TOTALS_PREFIX}${date}`)
+      if (rawTotals) totals = { ...EMPTY_DAILY_TOTALS, ...JSON.parse(rawTotals) }
+    } catch {
+      // skip corrupted entry
+    }
+    try {
+      const rawMeals = localStorage.getItem(`${DAILY_MEALS_PREFIX}${date}`)
+      if (rawMeals) meals = JSON.parse(rawMeals)
+    } catch {
+      // skip corrupted entry
+    }
+    entries.push({ date, totals, meals })
+  }
   return entries.sort((a, b) => b.date.localeCompare(a.date))
+}
+
+// Downscales an uploaded photo before storing it, so a handful of meal
+// photos don't quickly blow through localStorage's ~5MB quota.
+function resizeImageToDataUrl(file: File, maxDim = 640, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error)
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Could not load image'))
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { resolve(reader.result as string); return }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  })
 }
 
 function formatHistoryDate(dateStr: string): string {
@@ -238,6 +297,49 @@ function AdherenceRing({
   )
 }
 
+// ─── Meal Log Row ──────────────────────────────────────────────────────────────
+
+function MealLogRow({ log, onEdit, onDelete }: { log: MealLog; onEdit?: () => void; onDelete?: () => void }) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+      <div className="flex items-start gap-3">
+        {log.photo && (
+          <img src={log.photo} alt={log.meal} className="w-12 h-12 rounded-lg object-cover shrink-0" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600">{log.type}</span>
+            <span className="font-semibold text-slate-800 text-sm">{log.meal}</span>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-slate-400 font-medium">
+            <span>{log.serving}</span>
+            <span>{log.calories} kcal</span>
+            <span>{log.protein}g protein</span>
+            {log.carbs !== null && <span>{log.carbs}g carbs</span>}
+            {log.fat !== null && <span>{log.fat}g fat</span>}
+          </div>
+        </div>
+        {(onEdit || onDelete) && (
+          <div className="flex gap-1 shrink-0">
+            {onEdit && (
+              <button onClick={onEdit}
+                className="w-8 h-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-100 transition-colors">
+                <Pencil className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+            )}
+            {onDelete && (
+              <button onClick={onDelete}
+                className="w-8 h-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-red-50 hover:border-red-200 transition-colors">
+                <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 const TARGETS = { calories: 1498, protein: 149, steps: 8000, waterOz: 80 }
@@ -267,8 +369,8 @@ export default function Tracking() {
     setSelectedHistoryDate(null)
   }
 
-  // Meal log
-  const [mealLogs, setMealLogs] = useState<MealLog[]>([])
+  // Meal log — persisted per day, alongside the daily totals above
+  const [mealLogs, setMealLogs] = useState<MealLog[]>(() => loadDailyMeals())
   const [editingId, setEditingId] = useState<string | null>(null)
   const [mealType, setMealType] = useState('Breakfast')
   const [mealPreset, setMealPreset] = useState('0')
@@ -280,10 +382,19 @@ export default function Tracking() {
   const [fat, setFat] = useState('')
   const [fiber, setFiber] = useState('')
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(todayMealsKey(), JSON.stringify(mealLogs))
+    } catch {
+      // localStorage quota exceeded (e.g. too many photos) — skip persisting this update
+    }
+  }, [mealLogs])
+
   // Photo estimate
   const [photoType, setPhotoType] = useState('proteinBowl')
   const [photoMeal, setPhotoMeal] = useState('Breakfast')
   const [photoPortion, setPhotoPortion] = useState('medium')
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
 
   // Diet chart + workout
   const [dietPref, setDietPref] = useState('highProtein')
@@ -378,8 +489,20 @@ export default function Tracking() {
       carbs: photoEst.carbs,
       fat: photoEst.fat,
       fiber: null,
+      ...(photoPreview ? { photo: photoPreview } : {}),
     }
     setMealLogs((prev) => [...prev, log])
+    setPhotoPreview(null)
+  }
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      setPhotoPreview(await resizeImageToDataUrl(file))
+    } catch {
+      // unreadable file — ignore
+    }
   }
 
   const calStatus = effectiveCals / TARGETS.calories > 1.1 ? `Over by ${effectiveCals - TARGETS.calories} kcal` : effectiveCals / TARGETS.calories < 0.8 ? 'Under target' : 'In range'
@@ -506,10 +629,16 @@ export default function Tracking() {
             </CardHeader>
             <CardContent>
               {/* Upload box */}
-              <label className="flex flex-col items-center justify-center min-h-[110px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-colors mb-4">
-                <input type="file" accept="image/*" className="hidden" />
-                <Camera className="w-7 h-7 text-slate-300 mb-2" />
-                <span className="text-sm font-medium text-slate-400">Upload meal photo</span>
+              <label className="flex flex-col items-center justify-center min-h-[110px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-colors mb-4 overflow-hidden">
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Uploaded meal" className="max-h-28 rounded-xl object-contain py-2" />
+                ) : (
+                  <>
+                    <Camera className="w-7 h-7 text-slate-300 mb-2" />
+                    <span className="text-sm font-medium text-slate-400">Upload meal photo</span>
+                  </>
+                )}
               </label>
 
               <div className="grid grid-cols-3 gap-3 mb-3">
@@ -567,33 +696,12 @@ export default function Tracking() {
               {mealLogs.length > 0 && (
                 <div className="mt-4 space-y-2">
                   {mealLogs.map((log) => (
-                    <div key={log.id} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600">{log.type}</span>
-                            <span className="font-semibold text-slate-800 text-sm">{log.meal}</span>
-                          </div>
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-slate-400 font-medium">
-                            <span>{log.serving}</span>
-                            <span>{log.calories} kcal</span>
-                            <span>{log.protein}g protein</span>
-                            {log.carbs !== null && <span>{log.carbs}g carbs</span>}
-                            {log.fat !== null && <span>{log.fat}g fat</span>}
-                          </div>
-                        </div>
-                        <div className="flex gap-1 shrink-0">
-                          <button onClick={() => loadForEdit(log)}
-                            className="w-8 h-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-100 transition-colors">
-                            <Pencil className="w-3.5 h-3.5 text-slate-400" />
-                          </button>
-                          <button onClick={() => { setMealLogs((p) => p.filter((l) => l.id !== log.id)); if (editingId === log.id) setEditingId(null) }}
-                            className="w-8 h-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-red-50 hover:border-red-200 transition-colors">
-                            <Trash2 className="w-3.5 h-3.5 text-slate-400" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <MealLogRow
+                      key={log.id}
+                      log={log}
+                      onEdit={() => loadForEdit(log)}
+                      onDelete={() => { setMealLogs((p) => p.filter((l) => l.id !== log.id)); if (editingId === log.id) setEditingId(null) }}
+                    />
                   ))}
                 </div>
               )}
@@ -691,6 +799,17 @@ export default function Tracking() {
                 </div>
               ))}
             </div>
+
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mt-5 mb-2">Meals logged</p>
+            {selectedHistoryEntry.meals.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">No meals logged</p>
+            ) : (
+              <div className="space-y-2">
+                {selectedHistoryEntry.meals.map((log) => (
+                  <MealLogRow key={log.id} log={log} />
+                ))}
+              </div>
+            )}
           </div>
         ) : historyEntries.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-8">No history</p>
