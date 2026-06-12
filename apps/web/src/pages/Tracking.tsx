@@ -139,6 +139,7 @@ interface MealLog {
   fat: number | null
   fiber: number | null
   photo?: string
+  loggedAt?: number
 }
 
 interface DailyTotals {
@@ -260,6 +261,11 @@ function resizeImageToDataUrl(file: File, maxDim = 640, quality = 0.75): Promise
   })
 }
 
+function formatLogTime(timestamp?: number): string | null {
+  if (!timestamp) return null
+  return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 function formatHistoryDate(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number)
   const label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
@@ -310,6 +316,9 @@ function MealLogRow({ log, onEdit, onDelete }: { log: MealLog; onEdit?: () => vo
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600">{log.type}</span>
             <span className="font-semibold text-slate-800 text-sm">{log.meal}</span>
+            {formatLogTime(log.loggedAt) && (
+              <span className="text-[11px] text-slate-400 font-medium">{formatLogTime(log.loggedAt)}</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-slate-400 font-medium">
             <span>{log.serving}</span>
@@ -440,6 +449,7 @@ export default function Tracking() {
   }
 
   function saveMeal() {
+    const existing = editingId ? mealLogs.find((l) => l.id === editingId) : undefined
     const log: MealLog = {
       id: editingId ?? crypto.randomUUID(),
       type: mealType,
@@ -454,6 +464,8 @@ export default function Tracking() {
       carbs: carbs === '' ? null : Number(carbs),
       fat: fat === '' ? null : Number(fat),
       fiber: fiber === '' ? null : Number(fiber),
+      loggedAt: existing?.loggedAt ?? Date.now(),
+      ...(existing?.photo ? { photo: existing.photo } : {}),
     }
     if (editingId) {
       setMealLogs((prev) => prev.map((l) => l.id === editingId ? log : l))
@@ -489,6 +501,7 @@ export default function Tracking() {
       carbs: photoEst.carbs,
       fat: photoEst.fat,
       fiber: null,
+      loggedAt: Date.now(),
       ...(photoPreview ? { photo: photoPreview } : {}),
     }
     setMealLogs((prev) => [...prev, log])
