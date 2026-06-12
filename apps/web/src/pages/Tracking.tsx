@@ -740,9 +740,9 @@ export default function Tracking() {
           <CardContent>
             <div className="space-y-2">
               {dietRows.map(([meal, food, servingAmt, cal, prot], i) => (
-                <div key={i} className="grid grid-cols-[68px_1fr_80px_80px_100px] items-center gap-3 border border-slate-100 rounded-xl px-4 py-3 bg-slate-50 text-sm">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600">{meal}</span>
-                  <span className="font-semibold text-slate-800">{food}</span>
+                <div key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 border border-slate-100 rounded-xl px-4 py-3 bg-slate-50 text-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600 shrink-0">{meal}</span>
+                  <span className="font-semibold text-slate-800 flex-1 min-w-[140px]">{food}</span>
                   <span className="text-slate-400 font-medium text-xs">{servingAmt}</span>
                   <span className="text-slate-600 font-semibold text-xs">{cal}</span>
                   <span className="text-teal-700 font-semibold text-xs">{prot}</span>
