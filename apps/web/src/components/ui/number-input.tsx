@@ -17,8 +17,8 @@ export interface NumberInputProps
  *
  * This component keeps its own text buffer so the field can be empty while
  * the user is typing, and only pushes a parsed number up via `onValueChange`
- * once the typed text is a valid number. An empty/invalid buffer reverts to
- * the last known-good value on blur.
+ * once the typed text is a valid number. An empty/invalid buffer resets to
+ * 0 on blur.
  */
 export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
   ({ value, onValueChange, onChange, onBlur, ...props }, ref) => {
@@ -42,8 +42,9 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
           if (!Number.isNaN(parsed)) onValueChange(parsed)
         }}
         onBlur={(e) => {
-          if (raw === '' || Number.isNaN(Number(raw))) {
-            setRaw(String(value))
+          if (raw === '' || raw === '-' || Number.isNaN(Number(raw))) {
+            setRaw('0')
+            onValueChange(0)
           }
           onBlur?.(e)
         }}
