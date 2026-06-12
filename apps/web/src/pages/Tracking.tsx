@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { NumberInput } from '@/components/ui/number-input'
-import { Camera, Pencil, Trash2, Dumbbell, CheckSquare } from 'lucide-react'
+import { Modal } from '@/components/ui/modal'
+import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -148,12 +149,24 @@ interface DailyTotals {
 
 const EMPTY_DAILY_TOTALS: DailyTotals = { calories: 0, protein: 0, steps: 0, water: 0 }
 
+const DAILY_TOTALS_PREFIX = 'daily-tracking-'
+
+interface HistoryEntry {
+  date: string // YYYY-MM-DD
+  totals: DailyTotals
+}
+
 // Keyed by local date, so a new day always starts back at 0. Manual entries
 // and future device-sync updates (e.g. Apple Health step counts) both just
-// write to this same per-day record.
-function todayKey(): string {
+// write to this same per-day record. Every past day's record naturally
+// becomes a history entry once a new day's key takes over as "today".
+function todayDateString(): string {
   const d = new Date()
-  return `daily-tracking-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function todayKey(): string {
+  return `${DAILY_TOTALS_PREFIX}${todayDateString()}`
 }
 
 function loadDailyTotals(): DailyTotals {
@@ -164,6 +177,34 @@ function loadDailyTotals(): DailyTotals {
     // localStorage unavailable or value corrupted — fall back to a fresh day
   }
   return EMPTY_DAILY_TOTALS
+}
+
+function loadHistoryEntries(): HistoryEntry[] {
+  const entries: HistoryEntry[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key?.startsWith(DAILY_TOTALS_PREFIX)) continue
+      const date = key.slice(DAILY_TOTALS_PREFIX.length)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      try {
+        entries.push({ date, totals: { ...EMPTY_DAILY_TOTALS, ...JSON.parse(raw) } })
+      } catch {
+        // skip corrupted entry
+      }
+    }
+  } catch {
+    // localStorage unavailable
+  }
+  return entries.sort((a, b) => b.date.localeCompare(a.date))
+}
+
+function formatHistoryDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  return dateStr === todayDateString() ? `Today · ${label}` : label
 }
 
 // ─── Adherence Ring ────────────────────────────────────────────────────────────
@@ -214,6 +255,17 @@ export default function Tracking() {
       JSON.stringify({ calories: calorieLogged, protein: proteinLogged, steps: stepsLogged, water: waterLogged })
     )
   }, [calorieLogged, proteinLogged, stepsLogged, waterLogged])
+
+  // History modal
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null)
+  const historyEntries = useMemo(() => (historyOpen ? loadHistoryEntries() : []), [historyOpen])
+  const selectedHistoryEntry = historyEntries.find((e) => e.date === selectedHistoryDate)
+
+  function closeHistory() {
+    setHistoryOpen(false)
+    setSelectedHistoryDate(null)
+  }
 
   // Meal log
   const [mealLogs, setMealLogs] = useState<MealLog[]>([])
@@ -383,7 +435,13 @@ export default function Tracking() {
           <Card>
             <CardHeader>
               <CardTitle>Today</CardTitle>
-              <Badge variant="slate">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="slate">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Badge>
+                <Button variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
+                  <History className="w-3.5 h-3.5" />
+                  View history
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -606,6 +664,53 @@ export default function Tracking() {
         </Card>
 
       </main>
+
+      <Modal open={historyOpen} onClose={closeHistory} title="Tracking History">
+        {selectedHistoryEntry ? (
+          <div>
+            <button
+              onClick={() => setSelectedHistoryDate(null)}
+              className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-900 mb-4"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              All days
+            </button>
+            <p className="text-sm font-bold text-slate-800 mb-3">{formatHistoryDate(selectedHistoryEntry.date)}</p>
+            <div className="space-y-2">
+              {[
+                { label: 'Calories logged', value: selectedHistoryEntry.totals.calories, unit: 'kcal', target: TARGETS.calories },
+                { label: 'Protein logged',  value: selectedHistoryEntry.totals.protein,  unit: 'g',    target: TARGETS.protein },
+                { label: 'Steps',           value: selectedHistoryEntry.totals.steps,    unit: 'steps', target: TARGETS.steps },
+                { label: 'Water',           value: selectedHistoryEntry.totals.water,    unit: 'oz',    target: TARGETS.waterOz },
+              ].map(({ label, value, unit, target }) => (
+                <div key={label} className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <span className="text-sm font-semibold text-slate-600">{label}</span>
+                  <span className="text-sm font-bold text-slate-800">
+                    {value.toLocaleString()} {unit} <span className="text-slate-400 font-normal text-xs">/ {target.toLocaleString()}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : historyEntries.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-8">No history</p>
+        ) : (
+          <div className="space-y-2">
+            {historyEntries.map((entry) => (
+              <button
+                key={entry.date}
+                onClick={() => setSelectedHistoryDate(entry.date)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+              >
+                <span className="text-sm font-semibold text-slate-700">{formatHistoryDate(entry.date)}</span>
+                <span className="text-xs text-slate-400 font-medium">
+                  {entry.totals.calories.toLocaleString()} kcal · {entry.totals.protein}g · {entry.totals.steps.toLocaleString()} steps · {entry.totals.water}oz
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
