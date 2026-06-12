@@ -8,6 +8,7 @@ import AuthCallback from '@/pages/AuthCallback'
 import ResetPassword from '@/pages/ResetPassword'
 import Onboarding from '@/pages/Onboarding'
 import Dashboard from '@/pages/Dashboard'
+import Profile from '@/pages/Profile'
 import Tracking from '@/pages/Tracking'
 import Progress from '@/pages/Progress'
 import Explore from '@/pages/Explore'
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route element={<ProtectedLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/tracking" element={<Tracking />} />
           <Route path="/progress" element={<Progress />} />
           <Route path="/explore" element={<Explore />} />

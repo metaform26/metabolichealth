@@ -1,4 +1,4 @@
-import { Bell, Settings, LogOut } from 'lucide-react'
+import { Bell, Settings, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -64,6 +64,13 @@ export function Topbar({ title, eyebrow, actions }: TopbarProps) {
           </button>
           {showMenu && (
             <div className="absolute right-0 top-10 bg-white border border-slate-100 rounded-2xl shadow-lg shadow-slate-100 py-1 min-w-[140px] z-50">
+              <button
+                onClick={() => { setShowMenu(false); navigate('/profile') }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                Profile
+              </button>
               <button
                 onClick={handleSignOut}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
