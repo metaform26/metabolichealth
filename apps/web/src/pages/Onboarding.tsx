@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Activity, ChevronRight, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { NumberInput } from '@/components/ui/number-input'
 import type { UserProfile, ActivityLevel, GoalType, Symptom } from '@/lib/types'
 
 const defaultProfile: UserProfile = {
@@ -187,8 +188,8 @@ export default function Onboarding() {
                 </div>
               </Field>
               <Field label="Age">
-                <input type="number" min={18} max={100} value={profile.age}
-                  onChange={(e) => update('age', +e.target.value)} className={inputCls} />
+                <NumberInput min={18} max={100} value={profile.age}
+                  onValueChange={(v) => update('age', v)} className={inputCls} />
               </Field>
             </div>
           )}
@@ -203,20 +204,20 @@ export default function Onboarding() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Height (inches)">
-                  <input type="number" min={48} max={84} value={profile.heightInches}
-                    onChange={(e) => update('heightInches', +e.target.value)} className={inputCls} />
+                  <NumberInput min={48} max={84} value={profile.heightInches}
+                    onValueChange={(v) => update('heightInches', v)} className={inputCls} />
                 </Field>
                 <Field label="Weight (lbs)">
-                  <input type="number" min={80} max={600} value={profile.weightLbs}
-                    onChange={(e) => update('weightLbs', +e.target.value)} className={inputCls} />
+                  <NumberInput min={80} max={600} value={profile.weightLbs}
+                    onValueChange={(v) => update('weightLbs', v)} className={inputCls} />
                 </Field>
                 <Field label="Body fat % (estimate)">
-                  <input type="number" min={5} max={70} value={profile.bodyFatPercent}
-                    onChange={(e) => update('bodyFatPercent', +e.target.value)} className={inputCls} />
+                  <NumberInput min={5} max={70} value={profile.bodyFatPercent}
+                    onValueChange={(v) => update('bodyFatPercent', v)} className={inputCls} />
                 </Field>
                 <Field label="Waist (inches)">
-                  <input type="number" min={20} max={80} value={profile.waistInches}
-                    onChange={(e) => update('waistInches', +e.target.value)} className={inputCls} />
+                  <NumberInput min={20} max={80} value={profile.waistInches}
+                    onValueChange={(v) => update('waistInches', v)} className={inputCls} />
                 </Field>
               </div>
               <p className="text-xs text-slate-400">Don't know your body fat? A rough estimate is fine — you can update this later.</p>

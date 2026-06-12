@@ -1,7 +1,7 @@
 'use client'
 
 import { X, RefreshCw } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import type { UserProfile, ActivityLevel, GoalType, Symptom } from '@/lib/types'
@@ -91,13 +91,12 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
       <section className="space-y-3">
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Body Metrics</p>
         <div className="grid grid-cols-2 gap-3">
-          <Input
+          <NumberInput
             label="Age"
-            type="number"
             min={18}
             max={100}
             value={profile.age}
-            onChange={(e) => update('age', +e.target.value)}
+            onValueChange={(v) => update('age', v)}
           />
           <Select
             label="Sex"
@@ -108,41 +107,37 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
               { value: 'male', label: 'Male' },
             ]}
           />
-          <Input
+          <NumberInput
             label="Height"
-            type="number"
             min={48}
             max={84}
             suffix="in"
             value={profile.heightInches}
-            onChange={(e) => update('heightInches', +e.target.value)}
+            onValueChange={(v) => update('heightInches', v)}
           />
-          <Input
+          <NumberInput
             label="Weight"
-            type="number"
             min={80}
             max={600}
             suffix="lbs"
             value={profile.weightLbs}
-            onChange={(e) => update('weightLbs', +e.target.value)}
+            onValueChange={(v) => update('weightLbs', v)}
           />
-          <Input
+          <NumberInput
             label="Body Fat"
-            type="number"
             min={5}
             max={70}
             suffix="%"
             value={profile.bodyFatPercent}
-            onChange={(e) => update('bodyFatPercent', +e.target.value)}
+            onValueChange={(v) => update('bodyFatPercent', v)}
           />
-          <Input
+          <NumberInput
             label="Waist"
-            type="number"
             min={20}
             max={80}
             suffix="in"
             value={profile.waistInches}
-            onChange={(e) => update('waistInches', +e.target.value)}
+            onValueChange={(v) => update('waistInches', v)}
           />
         </div>
       </section>

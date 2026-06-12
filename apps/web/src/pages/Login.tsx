@@ -22,6 +22,7 @@ export default function Login() {
     const err = searchParams.get('error')
     if (err === 'auth_callback_failed') setError('Authentication failed. Please try again.')
     if (err === 'not_admin') setError('You do not have admin access.')
+    if (searchParams.get('confirmed') === '1') setSuccess('Email confirmed! Please sign in.')
   }, [searchParams])
 
   async function handleSubmit(e: React.FormEvent) {
