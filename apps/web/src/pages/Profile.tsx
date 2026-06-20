@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { OnboardingPanel } from '@/components/onboarding/onboarding-panel'
 import { supabase } from '@/lib/supabase'
-import { AlertCircle, CheckCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle, Camera, ChevronLeft } from 'lucide-react'
 import type { UserProfile, ActivityLevel, GoalType, Symptom } from '@/lib/types'
 
 const fallbackProfile: UserProfile = {
@@ -33,18 +34,22 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function Profile() {
+  const navigate = useNavigate()
   const [profile, setProfile] = useState<UserProfile>(fallbackProfile)
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) return
       setEmail(session.user.email ?? '')
       setFullName((session.user.user_metadata?.full_name as string) ?? '')
+      setAvatarUrl((session.user.user_metadata?.avatar_url as string) ?? null)
 
       const { data } = await supabase
         .from('user_health_profiles')
@@ -69,6 +74,30 @@ export default function Profile() {
       }
     })
   }, [])
+
+  function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const size = 256
+        const canvas = document.createElement('canvas')
+        canvas.width = size
+        canvas.height = size
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        const scale = Math.max(size / img.width, size / img.height)
+        const w = img.width * scale
+        const h = img.height * scale
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h)
+        setAvatarUrl(canvas.toDataURL('image/jpeg', 0.8))
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -97,7 +126,7 @@ export default function Profile() {
       if (dbError) throw dbError
 
       const { error: metaError } = await supabase.auth.updateUser({
-        data: { full_name: fullName },
+        data: { full_name: fullName, avatar_url: avatarUrl },
       })
       if (metaError) throw metaError
 
@@ -115,6 +144,14 @@ export default function Profile() {
 
       <main className="flex-1 min-w-0 p-5 lg:p-6 overflow-y-auto">
         <div className="max-w-2xl mx-auto space-y-5">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-900 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back to Goals
+          </button>
+
           <Card>
             <CardHeader>
               <div>
@@ -122,7 +159,30 @@ export default function Profile() {
                 <CardTitle>Your details</CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  className="w-20 h-20 rounded-full bg-slate-100 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-all overflow-hidden shrink-0 relative"
+                >
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <Camera className="w-6 h-6 text-slate-400" />
+                  )}
+                </div>
+                <div className="text-sm">
+                  <p className="font-semibold text-slate-700">{avatarUrl ? 'Change photo' : 'Upload photo'}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Click to upload a profile picture</p>
+                </div>
+              </div>
               <Field label="Full name">
                 <input
                   type="text"
