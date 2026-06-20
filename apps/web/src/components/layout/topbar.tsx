@@ -12,6 +12,7 @@ interface TopbarProps {
 
 export function Topbar({ title, eyebrow, actions }: TopbarProps) {
   const [initials, setInitials] = useState('U')
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [showMenu, setShowMenu] = useState(false)
   const navigate = useNavigate()
 
@@ -19,6 +20,7 @@ export function Topbar({ title, eyebrow, actions }: TopbarProps) {
     supabase.auth.getUser().then(({ data }) => {
       const email = data.user?.email ?? ''
       const name = (data.user?.user_metadata?.full_name as string) ?? email
+      setAvatarUrl((data.user?.user_metadata?.avatar_url as string) ?? null)
       setInitials(
         name
           .split(' ')
@@ -58,9 +60,13 @@ export function Topbar({ title, eyebrow, actions }: TopbarProps) {
         <div className="relative ml-1">
           <button
             onClick={() => setShowMenu((v) => !v)}
-            className="w-8 h-8 rounded-full bg-teal-700 flex items-center justify-center text-white text-xs font-bold hover:bg-teal-800 transition-colors"
+            className="w-8 h-8 rounded-full bg-teal-700 flex items-center justify-center text-white text-xs font-bold hover:bg-teal-800 transition-colors overflow-hidden"
           >
-            {initials}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              initials
+            )}
           </button>
           {showMenu && (
             <div className="absolute right-0 top-10 bg-white border border-slate-100 rounded-2xl shadow-lg shadow-slate-100 py-1 min-w-[140px] z-50">
