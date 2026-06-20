@@ -61,11 +61,9 @@ export function calculatePrescription(profile: UserProfile): MetabolicPrescripti
   const bodyFatClass = getBodyFatClass(profile.bodyFatPercent, profile.sex)
   const obesityClass = getObesityClass(bmi)
 
-  // Adjusted body weight for protein targets in obesity
   const idealKg = getIdealBodyWeight(heightCm, profile.sex)
   const adjustedBodyWeightKg =
     bmi >= 30 ? getAdjustedBodyWeight(weightKg, idealKg) : null
-  const proteinReferenceKg = adjustedBodyWeightKg ?? weightKg
 
   const bmr = calculateBMR(weightKg, heightCm, profile.age, profile.sex)
   const tdee = Math.round(bmr * ACTIVITY_FACTORS[profile.activityLevel])
@@ -73,9 +71,8 @@ export function calculatePrescription(profile: UserProfile): MetabolicPrescripti
   // Calorie targets
   const targetCalories = getTargetCalories(tdee, profile.goal)
 
-  // Protein targets (g/kg)
-  const proteinPerKg = getProteinPerKg(profile)
-  const proteinGrams = Math.round(proteinReferenceKg * proteinPerKg)
+  // Protein prescription hierarchy
+  const { proteinGrams, proteinPerKg } = calculateProtein(profile, weightKg, idealKg, bmi)
 
   // Macro distribution
   const proteinCals = proteinGrams * 4
@@ -147,21 +144,77 @@ function getTargetCalories(tdee: number, goal: UserProfile['goal']): number {
   }
 }
 
-function getProteinPerKg(profile: UserProfile): number {
-  if (profile.onGlp1) return 2.0
-  switch (profile.goal) {
-    case 'leanGain':
-      return 2.1
-    case 'recomposition':
-      return 1.9
-    case 'moderateLoss':
-    case 'mildLoss':
-    case 'aggressiveLoss':
-      return profile.age >= 60 ? 1.4 : 1.4
-    case 'maintenance':
-    default:
-      return profile.age >= 60 ? 1.2 : 1.0
+function hasFocus(profile: UserProfile, f: string): boolean {
+  return profile.conditionFocus?.includes(f as any) ?? false
+}
+
+function hasCondition(profile: UserProfile, keyword: string): boolean {
+  return profile.conditions.some((c) => c.toLowerCase().includes(keyword.toLowerCase()))
+}
+
+function isDialysis(profile: UserProfile): boolean {
+  return hasCondition(profile, 'dialysis')
+}
+
+function isCKD(profile: UserProfile): boolean {
+  return hasFocus(profile, 'ckd') || hasCondition(profile, 'kidney')
+}
+
+function calculateProtein(
+  profile: UserProfile,
+  weightKg: number,
+  idealKg: number,
+  bmi: number,
+): { proteinGrams: number; proteinPerKg: number } {
+  // Priority 1: Dialysis — 1.0 g × IBW/day
+  if (isDialysis(profile)) {
+    const grams = Math.round(idealKg * 1.0)
+    return { proteinGrams: grams, proteinPerKg: Math.round((grams / weightKg) * 10) / 10 }
   }
+
+  // Priority 2: Non-dialysis CKD — 0.8 g/kg/day
+  if (isCKD(profile)) {
+    const refKg = bmi >= 35 ? idealKg : weightKg
+    const grams = Math.round(refKg * 0.8)
+    return { proteinGrams: grams, proteinPerKg: Math.round((grams / weightKg) * 10) / 10 }
+  }
+
+  // Priority 3: BMI ≥ 35 without CKD — 1.5 g × IBW/day
+  if (bmi >= 35) {
+    const grams = Math.round(idealKg * 1.5)
+    return { proteinGrams: grams, proteinPerKg: Math.round((grams / weightKg) * 10) / 10 }
+  }
+
+  // Priority 4: Standard goal-based
+  const refKg = bmi >= 30 ? getAdjustedBodyWeight(weightKg, idealKg) : weightKg
+  let perKg: number
+
+  if (profile.onGlp1) {
+    perKg = 2.0
+  } else if (profile.age >= 60) {
+    perKg = profile.goal === 'maintenance' ? 1.2 : 1.4
+  } else {
+    switch (profile.goal) {
+      case 'leanGain':
+        perKg = 2.1
+        break
+      case 'recomposition':
+        perKg = 1.9
+        break
+      case 'moderateLoss':
+      case 'mildLoss':
+      case 'aggressiveLoss':
+        perKg = 1.4
+        break
+      case 'maintenance':
+      default:
+        perKg = 1.0
+        break
+    }
+  }
+
+  const grams = Math.round(refKg * perKg)
+  return { proteinGrams: grams, proteinPerKg: perKg }
 }
 
 function getMacroSplit(profile: UserProfile): { carbPercent: number; fatPercent: number } {
@@ -221,12 +274,9 @@ function getExerciseTargets(goal: UserProfile['goal']): {
 
 function getDietPattern(profile: UserProfile): DietPattern {
   if (profile.onGlp1) return 'glp1SmallMeals'
-  if (
-    profile.conditions.some((c) =>
-      c.toLowerCase().includes('diabet') || c.toLowerCase().includes('prediabet')
-    )
-  )
+  if (hasFocus(profile, 'diabetes') || hasCondition(profile, 'diabet') || hasCondition(profile, 'prediabet'))
     return 'diabetesFriendly'
+  if (isCKD(profile)) return 'lowerCarb'
   if (profile.goal === 'recomposition' || profile.goal === 'leanGain') return 'highProtein'
   if (profile.goal === 'aggressiveLoss') return 'lowerCarb'
   return 'mediterranean'
@@ -270,6 +320,44 @@ function generateAlerts(
 ): Alert[] {
   const alerts: Alert[] = []
 
+  // CKD alerts
+  if (isDialysis(profile)) {
+    alerts.push({
+      level: 'high',
+      message: 'Dialysis patient — protein set to 1.0 g/kg IBW. Clinician oversight required',
+    })
+  } else if (isCKD(profile)) {
+    alerts.push({
+      level: 'high',
+      message: 'CKD — protein restricted to 0.8 g/kg. Avoid high-protein diets without clinician approval',
+    })
+  }
+
+  // Heart failure alerts
+  if (hasFocus(profile, 'heartFailure') || hasCondition(profile, 'heart failure')) {
+    alerts.push({
+      level: 'medium',
+      message: 'Heart failure — monitor daily weight, sodium intake, and fluid balance',
+    })
+  }
+
+  // Heart rhythm alerts
+  if (hasFocus(profile, 'heartRhythm') || hasCondition(profile, 'irregular') || hasCondition(profile, 'arrhythmia') || hasCondition(profile, 'atrial')) {
+    alerts.push({
+      level: 'medium',
+      message: 'Heart rhythm condition — monitor heart rate during exercise and report palpitations',
+    })
+  }
+
+  // Diabetes alerts
+  if (hasFocus(profile, 'diabetes') || hasCondition(profile, 'diabet') || hasCondition(profile, 'prediabet')) {
+    alerts.push({
+      level: 'info',
+      message: 'Diabetes focus — monitor glucose, prioritize low-glycemic foods, track A1C',
+    })
+  }
+
+  // GLP-1 alerts
   if (profile.onGlp1) {
     if (profile.symptoms.includes('nausea') || profile.symptoms.includes('poorIntake')) {
       alerts.push({
