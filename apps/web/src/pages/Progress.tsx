@@ -6,7 +6,8 @@ import { StatCard } from '@/components/ui/stat-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Camera, Scale, TrendingDown } from 'lucide-react'
+import { Modal } from '@/components/ui/modal'
+import { Camera, Scale, History, ChevronLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -17,6 +18,19 @@ interface CheckIn {
   waist: number
   bodyFat: number
 }
+
+interface PhotoLog {
+  date: string
+  loggedAt: number
+  front: string | null
+  back: string | null
+  left: string | null
+  right: string | null
+}
+
+const PHOTO_LOG_PREFIX = 'mh:progress-photos:'
+const PHOTO_ANGLES = ['front', 'back', 'left', 'right'] as const
+type PhotoAngle = (typeof PHOTO_ANGLES)[number]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,6 +56,69 @@ function bmiClass(bmi: number) {
   if (bmi < 35) return 'Obesity I'
   if (bmi < 40) return 'Obesity II'
   return 'Obesity III'
+}
+
+// ─── Photo log helpers ───────────────────────────────────────────────────────
+
+function todayDateString(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function resizeImageToDataUrl(file: File, maxDim = 640, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error)
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Could not load image'))
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { resolve(reader.result as string); return }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadTodayPhotos(): PhotoLog {
+  try {
+    const raw = localStorage.getItem(`${PHOTO_LOG_PREFIX}${todayDateString()}`)
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return { date: todayDateString(), loggedAt: Date.now(), front: null, back: null, left: null, right: null }
+}
+
+function saveTodayPhotos(log: PhotoLog) {
+  try {
+    localStorage.setItem(`${PHOTO_LOG_PREFIX}${log.date}`, JSON.stringify(log))
+  } catch { /* quota exceeded */ }
+}
+
+function loadPhotoHistory(): PhotoLog[] {
+  const entries: PhotoLog[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key?.startsWith(PHOTO_LOG_PREFIX)) continue
+      const raw = localStorage.getItem(key)
+      if (raw) entries.push(JSON.parse(raw))
+    }
+  } catch { /* ignore */ }
+  return entries.sort((a, b) => b.date.localeCompare(a.date))
+}
+
+function formatPhotoDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  return dateStr === todayDateString() ? `Today · ${label}` : label
 }
 
 // ─── SVG Chart ────────────────────────────────────────────────────────────────
@@ -175,14 +252,47 @@ export default function Progress() {
   const [bodyFat, setBodyFat] = useState('')
   const [targetWeight, setTargetWeight] = useState('')
   const [targetBodyFat, setTargetBodyFat] = useState('')
-  const [beforeSrc, setBeforeSrc] = useState<string | null>(null)
-  const [afterSrc, setAfterSrc] = useState<string | null>(null)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [staged, setStaged] = useState<Record<PhotoAngle, string | null>>({ front: null, back: null, left: null, right: null })
+  const [photoHistoryOpen, setPhotoHistoryOpen] = useState(false)
+  const [selectedPhotoDate, setSelectedPhotoDate] = useState<string | null>(null)
+  const photoHistory = useMemo(() => (photoHistoryOpen ? loadPhotoHistory() : []), [photoHistoryOpen])
+  const selectedPhotoEntry = photoHistory.find((e) => e.date === selectedPhotoDate)
   const [reminders, setReminders] = useState({
     calories: true, hydration: true, steps: true, weekly: true,
   })
 
-  const beforeRef = useRef<HTMLInputElement>(null)
-  const afterRef = useRef<HTMLInputElement>(null)
+  const fileRefs = {
+    front: useRef<HTMLInputElement>(null),
+    back: useRef<HTMLInputElement>(null),
+    left: useRef<HTMLInputElement>(null),
+    right: useRef<HTMLInputElement>(null),
+  }
+
+  async function handlePhotoUpload(angle: PhotoAngle, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const dataUrl = await resizeImageToDataUrl(file)
+    setStaged((prev) => ({ ...prev, [angle]: dataUrl }))
+  }
+
+  function submitPhotos() {
+    const log: PhotoLog = {
+      date: todayDateString(),
+      loggedAt: Date.now(),
+      ...staged,
+    }
+    saveTodayPhotos(log)
+    setUploadOpen(false)
+    setStaged({ front: null, back: null, left: null, right: null })
+  }
+
+  const stagedCount = PHOTO_ANGLES.filter((a) => staged[a]).length
+
+  function closePhotoHistory() {
+    setPhotoHistoryOpen(false)
+    setSelectedPhotoDate(null)
+  }
 
   const sorted = useMemo(
     () => [...logs].sort((a, b) => a.date.localeCompare(b.date)),
@@ -195,7 +305,6 @@ export default function Progress() {
   const bmi = (latest.weight / (HEIGHT_INCHES * HEIGHT_INCHES)) * 703
   const leanMass = latest.weight * (1 - latest.bodyFat / 100)
   const weightDelta = first ? latest.weight - first.weight : 0
-  const fatDelta = first ? latest.bodyFat - first.bodyFat : 0
 
   function saveCheckIn() {
     const w = parseFloat(weight) || STARTING_WEIGHT
@@ -205,12 +314,6 @@ export default function Progress() {
     setWeight('')
     setWaist('')
     setBodyFat('')
-  }
-
-  function loadPhoto(e: React.ChangeEvent<HTMLInputElement>, setter: (s: string) => void) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setter(URL.createObjectURL(file))
   }
 
   return (
@@ -321,98 +424,128 @@ export default function Progress() {
           </Card>
         </div>
 
-        {/* Photo comparison */}
+        {/* Photo log */}
         <Card>
           <CardHeader>
             <div>
               <CardEyebrow>Visual progress</CardEyebrow>
               <CardTitle>Photo Comparison</CardTitle>
             </div>
-            <Badge variant="slate">Self upload</Badge>
+            <Button variant="secondary" size="sm" onClick={() => setPhotoHistoryOpen(true)}>
+              <History className="w-3.5 h-3.5" />
+              History
+            </Button>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-[1fr_1fr_260px] gap-4">
-              {/* Before */}
-              <div onClick={() => beforeRef.current?.click()}
-                className={cn(
-                  'min-h-[240px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 relative overflow-hidden cursor-pointer transition-all hover:border-teal-300 hover:bg-teal-50/30 flex items-center justify-center',
-                  beforeSrc && 'border-teal-200'
-                )}>
-                <input ref={beforeRef} type="file" accept="image/*" className="hidden"
-                  onChange={(e) => loadPhoto(e, setBeforeSrc)} />
-                {beforeSrc ? (
-                  <>
-                    <img src={beforeSrc} alt="Before" className="w-full h-full object-cover absolute inset-0" />
-                    <span className="absolute bottom-2 left-2 rounded-full bg-black/60 text-white text-xs font-semibold px-2.5 py-1">Before</span>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
-                    <Camera className="w-7 h-7" />
-                    <span className="text-sm font-medium">Upload before photo</span>
-                  </div>
-                )}
-              </div>
-
-              {/* After */}
-              <div onClick={() => afterRef.current?.click()}
-                className={cn(
-                  'min-h-[240px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 relative overflow-hidden cursor-pointer transition-all hover:border-teal-300 hover:bg-teal-50/30 flex items-center justify-center',
-                  afterSrc && 'border-teal-200'
-                )}>
-                <input ref={afterRef} type="file" accept="image/*" className="hidden"
-                  onChange={(e) => loadPhoto(e, setAfterSrc)} />
-                {afterSrc ? (
-                  <>
-                    <img src={afterSrc} alt="Current" className="w-full h-full object-cover absolute inset-0" />
-                    <span className="absolute bottom-2 left-2 rounded-full bg-black/60 text-white text-xs font-semibold px-2.5 py-1">Current</span>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
-                    <Camera className="w-7 h-7" />
-                    <span className="text-sm font-medium">Upload current photo</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Summary panel */}
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 flex flex-col gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-teal-600 mb-1">Summary</p>
-                  <p className="font-semibold text-slate-800 text-sm leading-snug">
-                    {beforeSrc && afterSrc
-                      ? 'Progress comparison ready'
-                      : beforeSrc || afterSrc
-                      ? 'Add the second photo to compare'
-                      : 'Add two photos to compare progress'}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    Use consistent lighting, posture, and distance for accurate comparison.
-                  </p>
-                </div>
-                <div className="space-y-2 mt-auto">
-                  {weightDelta !== 0 && (
-                    <div className="flex items-center gap-2 rounded-xl bg-teal-50 border border-teal-100 px-3 py-2">
-                      <TrendingDown className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                      <span className="text-xs font-semibold text-teal-700">
-                        {Math.abs(weightDelta).toFixed(1)} lb {weightDelta < 0 ? 'lost' : 'gained'}
-                      </span>
+            {uploadOpen ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {PHOTO_ANGLES.map((angle) => (
+                    <div
+                      key={angle}
+                      onClick={() => fileRefs[angle].current?.click()}
+                      className={cn(
+                        'min-h-[200px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 relative overflow-hidden cursor-pointer transition-all hover:border-teal-300 hover:bg-teal-50/30 flex items-center justify-center',
+                        staged[angle] && 'border-teal-200'
+                      )}
+                    >
+                      <input
+                        ref={fileRefs[angle]}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handlePhotoUpload(angle, e)}
+                      />
+                      {staged[angle] ? (
+                        <>
+                          <img src={staged[angle]!} alt={angle} className="w-full h-full object-cover absolute inset-0" />
+                          <span className="absolute bottom-2 left-2 rounded-full bg-black/60 text-white text-xs font-semibold px-2.5 py-1 capitalize">{angle}</span>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                          <Camera className="w-6 h-6" />
+                          <span className="text-xs font-semibold capitalize">{angle}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {fatDelta !== 0 && (
-                    <div className="flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-100 px-3 py-2">
-                      <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <span className="text-xs font-semibold text-rose-600">
-                        {Math.abs(fatDelta).toFixed(1)}% body fat {fatDelta < 0 ? 'lost' : 'gained'}
-                      </span>
-                    </div>
-                  )}
+                  ))}
                 </div>
+                <p className="text-xs text-slate-400 mt-3">
+                  Use consistent lighting, posture, and distance for accurate comparison.
+                </p>
+                <div className="flex items-center justify-between mt-4">
+                  <Button variant="secondary" size="sm" onClick={() => { setUploadOpen(false); setStaged({ front: null, back: null, left: null, right: null }) }}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={submitPhotos} disabled={stagedCount === 0}>
+                    Submit {stagedCount > 0 && `(${stagedCount}/4)`}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Camera className="w-8 h-8 text-slate-300" />
+                <p className="text-sm text-slate-500">Log progress photos from 4 angles</p>
+                <Button onClick={() => setUploadOpen(true)}>
+                  <Camera className="w-4 h-4" />
+                  Upload Photos
+                </Button>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
       </main>
+
+      <Modal open={photoHistoryOpen} onClose={closePhotoHistory} title="Photo History">
+        {selectedPhotoEntry ? (
+          <div>
+            <button
+              onClick={() => setSelectedPhotoDate(null)}
+              className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-900 mb-4"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              All dates
+            </button>
+            <p className="text-sm font-bold text-slate-800 mb-3">{formatPhotoDate(selectedPhotoEntry.date)}</p>
+            <div className="grid grid-cols-2 gap-3">
+              {PHOTO_ANGLES.map((angle) => (
+                <div key={angle} className="rounded-xl overflow-hidden border border-slate-100 bg-slate-50">
+                  {selectedPhotoEntry[angle] ? (
+                    <div className="relative">
+                      <img src={selectedPhotoEntry[angle]!} alt={angle} className="w-full aspect-[3/4] object-cover" />
+                      <span className="absolute bottom-2 left-2 rounded-full bg-black/60 text-white text-[10px] font-semibold px-2 py-0.5 capitalize">{angle}</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center aspect-[3/4] text-slate-300">
+                      <Camera className="w-5 h-5 mb-1" />
+                      <span className="text-[10px] font-semibold capitalize">{angle}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : photoHistory.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-8">No photo logs yet</p>
+        ) : (
+          <div className="space-y-2">
+            {photoHistory.map((entry) => {
+              const count = PHOTO_ANGLES.filter((a) => entry[a]).length
+              return (
+                <button
+                  key={entry.date}
+                  onClick={() => setSelectedPhotoDate(entry.date)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                >
+                  <span className="text-sm font-semibold text-slate-700">{formatPhotoDate(entry.date)}</span>
+                  <span className="text-xs text-slate-400 font-medium">{count}/4 photos</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
