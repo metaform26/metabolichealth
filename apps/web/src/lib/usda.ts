@@ -49,13 +49,9 @@ function mapFood(raw: RawFood): USDAFood {
 
 export async function searchFoods(query: string, pageSize = 8): Promise<USDAFood[]> {
   if (!query.trim()) return []
-  const params = new URLSearchParams({
-    query: query.trim(),
-    api_key: API_KEY,
-    pageSize: String(pageSize),
-    dataType: 'Survey (FNDDS),SR Legacy',
-  })
-  const res = await fetch(`${BASE}/foods/search?${params}`)
+  const q = encodeURIComponent(query.trim())
+  const url = `${BASE}/foods/search?query=${q}&api_key=${API_KEY}&pageSize=${pageSize}&dataType=${encodeURIComponent('Survey (FNDDS),SR Legacy')}`
+  const res = await fetch(url)
   if (!res.ok) throw new Error(`USDA API error: ${res.status}`)
   const data = await res.json()
   return (data.foods as RawFood[]).map(mapFood)
