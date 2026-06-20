@@ -34,6 +34,21 @@ export type ConditionFocus =
   | 'heartRhythm'
   | 'ckd'
 
+export interface UserGoals {
+  targetWeightLbs: number | null
+  targetBodyFatPercent: number | null
+  targetWeeks: number | null
+}
+
+export interface BaselineData {
+  weightLbs: number
+  bodyFatPercent: number
+  waistInches: number
+  leanMassLbs: number
+  bmi: number
+  date: string
+}
+
 export interface UserProfile {
   age: number
   sex: Sex
@@ -43,6 +58,7 @@ export interface UserProfile {
   waistInches: number
   activityLevel: ActivityLevel
   goal: GoalType
+  userGoals: UserGoals
   conditionFocus: ConditionFocus[]
   onGlp1: boolean
   symptoms: Symptom[]

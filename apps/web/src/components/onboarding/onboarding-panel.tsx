@@ -1,10 +1,39 @@
 'use client'
 
-import { X } from 'lucide-react'
+import { X, AlertTriangle } from 'lucide-react'
 import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import type { UserProfile, ActivityLevel, GoalType, Symptom, ConditionFocus } from '@/lib/types'
+
+function getMinBodyFat(sex: 'male' | 'female') { return sex === 'male' ? 8 : 16 }
+function getHealthyRange(sex: 'male' | 'female') { return sex === 'male' ? '10–20%' : '18–28%' }
+function getAthleticRange(sex: 'male' | 'female') { return sex === 'male' ? '10–15%' : '18–23%' }
+
+function estimateWeeks(currentLbs: number, targetLbs: number, currentBf: number, targetBf: number, goal: GoalType): { weeks: number; warning: string | null } {
+  if (goal === 'recomposition') {
+    const bfDiff = currentBf - targetBf
+    if (bfDiff <= 0) return { weeks: 0, warning: null }
+    const weeks = Math.ceil(bfDiff / 0.5)
+    return { weeks, warning: null }
+  }
+  if (goal === 'leanGain') {
+    const gain = targetLbs - currentLbs
+    if (gain <= 0) return { weeks: 0, warning: null }
+    const monthlyGain = currentLbs * 0.00375
+    const months = gain / monthlyGain
+    return { weeks: Math.ceil(months * 4.33), warning: null }
+  }
+  const loss = currentLbs - targetLbs
+  if (loss <= 0) return { weeks: 0, warning: null }
+  const safePerWeek = currentLbs * 0.0075
+  const weeks = Math.ceil(loss / safePerWeek)
+  const actualPerWeek = loss / weeks
+  const warning = actualPerWeek > currentLbs * 0.01
+    ? `Projected loss of ${actualPerWeek.toFixed(1)} lb/week exceeds 1% of body weight — consider a longer timeline`
+    : null
+  return { weeks, warning }
+}
 
 interface OnboardingPanelProps {
   profile: UserProfile
@@ -164,6 +193,64 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
           onChange={(e) => update('activityLevel', e.target.value as ActivityLevel)}
           options={ACTIVITY_OPTIONS}
         />
+      </section>
+
+      {/* Personalized Targets */}
+      <section className="space-y-3">
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Your Targets</p>
+        <p className="text-xs text-slate-500">
+          Current: {profile.weightLbs} lb · {profile.bodyFatPercent}% body fat.
+          Healthy BF range: {getHealthyRange(profile.sex)} · Athletic: {getAthleticRange(profile.sex)}
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <NumberInput
+            label="Target Weight"
+            suffix="lb"
+            min={50}
+            max={600}
+            value={profile.userGoals.targetWeightLbs ?? profile.weightLbs}
+            onValueChange={(v) => update('userGoals', { ...profile.userGoals, targetWeightLbs: v })}
+          />
+          <NumberInput
+            label="Target Body Fat"
+            suffix="%"
+            min={getMinBodyFat(profile.sex)}
+            max={60}
+            value={profile.userGoals.targetBodyFatPercent ?? profile.bodyFatPercent}
+            onValueChange={(v) => {
+              const min = getMinBodyFat(profile.sex)
+              update('userGoals', { ...profile.userGoals, targetBodyFatPercent: Math.max(v, min) })
+            }}
+          />
+        </div>
+        {profile.userGoals.targetBodyFatPercent !== null && profile.userGoals.targetBodyFatPercent < getMinBodyFat(profile.sex) && (
+          <div className="flex gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <p className="text-xs">Minimum safe target for {profile.sex === 'male' ? 'men' : 'women'} is {getMinBodyFat(profile.sex)}%</p>
+          </div>
+        )}
+        {(() => {
+          const tw = profile.userGoals.targetWeightLbs ?? profile.weightLbs
+          const tbf = profile.userGoals.targetBodyFatPercent ?? profile.bodyFatPercent
+          if (tw === profile.weightLbs && tbf === profile.bodyFatPercent) return null
+          const est = estimateWeeks(profile.weightLbs, tw, profile.bodyFatPercent, tbf, profile.goal)
+          if (est.weeks <= 0) return null
+          return (
+            <div className="space-y-2">
+              <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2.5 text-xs text-teal-700 font-medium">
+                Estimated timeline: ~{est.weeks} weeks ({Math.round(est.weeks / 4.33)} months)
+                {tw !== profile.weightLbs && <> · {Math.abs(profile.weightLbs - tw).toFixed(1)} lb {tw < profile.weightLbs ? 'to lose' : 'to gain'}</>}
+                {tbf !== profile.bodyFatPercent && <> · {Math.abs(profile.bodyFatPercent - tbf).toFixed(1)}% BF change</>}
+              </div>
+              {est.warning && (
+                <div className="flex gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p className="text-xs">{est.warning}</p>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </section>
 
       {/* Condition Focus */}
