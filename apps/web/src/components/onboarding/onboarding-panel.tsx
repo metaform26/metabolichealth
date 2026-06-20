@@ -202,7 +202,7 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
         <textarea
           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
           rows={3}
-          placeholder="e.g. Prediabetes, Hypertension, Sleep apnea"
+          placeholder="e.g. Diabetes, Pre-diabetes, Obstructive sleep apnea, Chronic kidney disease, Irregular heart beats, Coronary artery disease, Heart failure"
           value={profile.conditions.join(', ')}
           onChange={(e) =>
             update(
