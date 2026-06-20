@@ -9,7 +9,7 @@ import { MacroBars } from '@/components/dashboard/macro-bars'
 import { PlanBlocks } from '@/components/dashboard/plan-blocks'
 import { calculatePrescription } from '@/lib/metabolic-engine'
 import { supabase } from '@/lib/supabase'
-import type { UserProfile, MetabolicPrescription, ActivityLevel, GoalType, Symptom } from '@/lib/types'
+import type { UserProfile, MetabolicPrescription, ActivityLevel, GoalType, Symptom, ConditionFocus } from '@/lib/types'
 
 const fallbackProfile: UserProfile = {
   age: 35,
@@ -20,6 +20,7 @@ const fallbackProfile: UserProfile = {
   waistInches: 34,
   activityLevel: 'sedentary',
   goal: 'moderateLoss',
+  conditionFocus: [],
   onGlp1: false,
   symptoms: [],
   conditions: [],
@@ -47,6 +48,7 @@ export default function Dashboard() {
           waistInches: data.waist_inches ?? 34,
           activityLevel: data.activity_level as ActivityLevel,
           goal: data.goal as GoalType,
+          conditionFocus: (data.condition_focus ?? []) as ConditionFocus[],
           onGlp1: data.on_glp1,
           symptoms: (data.symptoms ?? []) as Symptom[],
           conditions: data.conditions ?? [],

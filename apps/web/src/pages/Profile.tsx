@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { OnboardingPanel } from '@/components/onboarding/onboarding-panel'
 import { supabase } from '@/lib/supabase'
 import { AlertCircle, CheckCircle, Camera, ChevronLeft } from 'lucide-react'
-import type { UserProfile, ActivityLevel, GoalType, Symptom } from '@/lib/types'
+import type { UserProfile, ActivityLevel, GoalType, Symptom, ConditionFocus } from '@/lib/types'
 
 const fallbackProfile: UserProfile = {
   age: 35,
@@ -17,6 +17,7 @@ const fallbackProfile: UserProfile = {
   waistInches: 34,
   activityLevel: 'sedentary',
   goal: 'moderateLoss',
+  conditionFocus: [],
   onGlp1: false,
   symptoms: [],
   conditions: [],
@@ -67,6 +68,7 @@ export default function Profile() {
           waistInches: data.waist_inches ?? 34,
           activityLevel: data.activity_level as ActivityLevel,
           goal: data.goal as GoalType,
+          conditionFocus: (data.condition_focus ?? []) as ConditionFocus[],
           onGlp1: data.on_glp1,
           symptoms: (data.symptoms ?? []) as Symptom[],
           conditions: data.conditions ?? [],
@@ -119,6 +121,7 @@ export default function Profile() {
           waist_inches: profile.waistInches,
           activity_level: profile.activityLevel,
           goal: profile.goal,
+          condition_focus: profile.conditionFocus,
           on_glp1: profile.onGlp1,
           symptoms: profile.symptoms,
           conditions: profile.conditions,

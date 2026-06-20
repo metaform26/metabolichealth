@@ -4,7 +4,7 @@ import { X } from 'lucide-react'
 import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import type { UserProfile, ActivityLevel, GoalType, Symptom } from '@/lib/types'
+import type { UserProfile, ActivityLevel, GoalType, Symptom, ConditionFocus } from '@/lib/types'
 
 interface OnboardingPanelProps {
   profile: UserProfile
@@ -29,6 +29,14 @@ const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
   { value: 'athlete', label: 'Athlete / manual labor' },
 ]
 
+const FOCUS_OPTIONS: { value: ConditionFocus; label: string }[] = [
+  { value: 'weightLoss', label: 'Weight Loss / Obesity' },
+  { value: 'diabetes', label: 'Diabetes Management' },
+  { value: 'heartFailure', label: 'Heart Failure Management' },
+  { value: 'heartRhythm', label: 'Heart Rhythm Management' },
+  { value: 'ckd', label: 'CKD Management' },
+]
+
 const CONDITION_OPTIONS = [
   'Diabetes',
   'Pre-diabetes',
@@ -51,6 +59,14 @@ const SYMPTOM_OPTIONS: { value: Symptom; label: string }[] = [
 export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelProps) {
   function update<K extends keyof UserProfile>(key: K, value: UserProfile[K]) {
     onChange({ ...profile, [key]: value })
+  }
+
+  const toggleFocus = (f: ConditionFocus) => {
+    const current = profile.conditionFocus
+    update(
+      'conditionFocus',
+      current.includes(f) ? current.filter((x) => x !== f) : [...current, f]
+    )
   }
 
   const toggleSymptom = (s: Symptom) => {
@@ -148,6 +164,28 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
           onChange={(e) => update('activityLevel', e.target.value as ActivityLevel)}
           options={ACTIVITY_OPTIONS}
         />
+      </section>
+
+      {/* Condition Focus */}
+      <section className="space-y-3">
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Condition Focus</p>
+        <p className="text-xs text-slate-500">Select all that apply — the app will personalize your experience.</p>
+        <div className="space-y-2">
+          {FOCUS_OPTIONS.map(({ value, label }) => (
+            <label
+              key={value}
+              className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors"
+            >
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-teal-600"
+                checked={profile.conditionFocus.includes(value)}
+                onChange={() => toggleFocus(value)}
+              />
+              <span className="text-sm text-slate-700">{label}</span>
+            </label>
+          ))}
+        </div>
       </section>
 
       {/* GLP-1 toggle */}

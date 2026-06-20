@@ -27,6 +27,13 @@ export type DietPattern =
   | 'glp1SmallMeals'
   | 'diabetesFriendly'
 
+export type ConditionFocus =
+  | 'weightLoss'
+  | 'diabetes'
+  | 'heartFailure'
+  | 'heartRhythm'
+  | 'ckd'
+
 export interface UserProfile {
   age: number
   sex: Sex
@@ -36,6 +43,7 @@ export interface UserProfile {
   waistInches: number
   activityLevel: ActivityLevel
   goal: GoalType
+  conditionFocus: ConditionFocus[]
   onGlp1: boolean
   symptoms: Symptom[]
   conditions: string[]
