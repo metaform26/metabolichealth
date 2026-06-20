@@ -173,26 +173,28 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
         </label>
       </section>
 
-      {/* Symptoms */}
-      <section className="space-y-3">
-        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Current Symptoms</p>
-        <div className="space-y-2">
-          {SYMPTOM_OPTIONS.map(({ value, label }) => (
-            <label
-              key={value}
-              className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors"
-            >
-              <input
-                type="checkbox"
-                className="w-4 h-4 accent-teal-600"
-                checked={profile.symptoms.includes(value)}
-                onChange={() => toggleSymptom(value)}
-              />
-              <span className="text-sm text-slate-700">{label}</span>
-            </label>
-          ))}
-        </div>
-      </section>
+      {/* Symptoms — only relevant when on GLP-1 */}
+      {profile.onGlp1 && (
+        <section className="space-y-3">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Current Symptoms</p>
+          <div className="space-y-2">
+            {SYMPTOM_OPTIONS.map(({ value, label }) => (
+              <label
+                key={value}
+                className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-teal-600"
+                  checked={profile.symptoms.includes(value)}
+                  onChange={() => toggleSymptom(value)}
+                />
+                <span className="text-sm text-slate-700">{label}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Health conditions */}
       <section className="space-y-3">
