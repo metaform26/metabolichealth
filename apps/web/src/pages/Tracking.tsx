@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -8,8 +8,9 @@ import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { NumberInput } from '@/components/ui/number-input'
 import { Modal } from '@/components/ui/modal'
-import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft } from 'lucide-react'
+import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { searchFoods, type USDAFood } from '@/lib/usda'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -52,66 +53,77 @@ const MEAL_PRESETS: { type: string; meal: string; serving: string; calories: num
   { type: 'Snack',     meal: 'Edamame cup',            serving: '160 g',  calories: 190, protein: 17 },
 ]
 
-const DIET_CHARTS: Record<string, [string, string, string, string, string][]> = {
+interface DietChartEntry {
+  meal: string
+  food: string
+  qty: string
+  cal: number
+  protein: number
+  carbs: number
+  fat: number
+  fiber: number
+}
+
+const DIET_CHARTS: Record<string, DietChartEntry[]> = {
   highProtein: [
-    ['Breakfast', 'Greek yogurt, berries, chia',  '280 g', '320 kcal', '28 g protein'],
-    ['Breakfast', 'Egg white veggie omelet',       '310 g', '330 kcal', '35 g protein'],
-    ['Lunch',     'Chicken quinoa bowl',           '430 g', '520 kcal', '42 g protein'],
-    ['Lunch',     'Turkey lettuce wrap',           '330 g', '390 kcal', '34 g protein'],
-    ['Dinner',    'Lean turkey chili',             '420 g', '470 kcal', '42 g protein'],
-    ['Dinner',    'Garlic shrimp vegetable bowl',  '390 g', '450 kcal', '39 g protein'],
-    ['Snack',     'Cottage cheese protein snack',  '220 g', '220 kcal', '24 g protein'],
-    ['Snack',     'Protein shake with berries',    '360 mL','260 kcal', '32 g protein'],
+    { meal: 'Breakfast', food: 'Greek yogurt (3/4 cup) + berries (1/2 cup) + chia (1 tbsp)', qty: '280 g', cal: 320, protein: 28, carbs: 32, fat: 8, fiber: 5 },
+    { meal: 'Breakfast', food: 'Egg white veggie omelet (4 whites + 1 cup veggies)', qty: '310 g', cal: 330, protein: 35, carbs: 10, fat: 14, fiber: 3 },
+    { meal: 'Lunch',     food: 'Chicken breast (5 oz) + quinoa (3/4 cup) + greens', qty: '430 g', cal: 520, protein: 42, carbs: 48, fat: 12, fiber: 6 },
+    { meal: 'Lunch',     food: 'Turkey (4 oz) lettuce wraps + hummus (2 tbsp)', qty: '330 g', cal: 390, protein: 34, carbs: 18, fat: 20, fiber: 4 },
+    { meal: 'Dinner',    food: 'Lean turkey chili (1.5 cups) + kidney beans', qty: '420 g', cal: 470, protein: 42, carbs: 36, fat: 14, fiber: 10 },
+    { meal: 'Dinner',    food: 'Shrimp (6 oz) + mixed vegetables (1.5 cups)', qty: '390 g', cal: 450, protein: 39, carbs: 28, fat: 18, fiber: 6 },
+    { meal: 'Snack',     food: 'Cottage cheese (1 cup) + walnuts (1 tbsp)', qty: '220 g', cal: 220, protein: 24, carbs: 8, fat: 10, fiber: 0 },
+    { meal: 'Snack',     food: 'Whey protein shake (1 scoop) + berries (1/2 cup)', qty: '360 mL', cal: 260, protein: 32, carbs: 18, fat: 3, fiber: 2 },
   ],
   mediterranean: [
-    ['Breakfast', 'Feta egg white scramble',       '290 g', '340 kcal', '30 g protein'],
-    ['Breakfast', 'Greek yogurt with honey, nuts', '280 g', '320 kcal', '24 g protein'],
-    ['Lunch',     'Chicken Greek salad',           '430 g', '490 kcal', '40 g protein'],
-    ['Lunch',     'Hummus veggie wrap',            '360 g', '430 kcal', '22 g protein'],
-    ['Dinner',    'Salmon lemon herbs plate',      '440 g', '580 kcal', '44 g protein'],
-    ['Dinner',    'Grilled chicken tabbouleh',     '420 g', '510 kcal', '42 g protein'],
-    ['Snack',     'Tzatziki with veggies',         '200 g', '180 kcal', '10 g protein'],
-    ['Snack',     'Feta and olives plate',         '100 g', '200 kcal', '8 g protein'],
+    { meal: 'Breakfast', food: 'Feta (1 oz) + egg white scramble (4 whites) + tomato', qty: '290 g', cal: 340, protein: 30, carbs: 12, fat: 18, fiber: 2 },
+    { meal: 'Breakfast', food: 'Greek yogurt (3/4 cup) + honey (1 tsp) + almonds (1 tbsp)', qty: '280 g', cal: 320, protein: 24, carbs: 32, fat: 12, fiber: 2 },
+    { meal: 'Lunch',     food: 'Chicken breast (5 oz) Greek salad + olive oil (1 tbsp)', qty: '430 g', cal: 490, protein: 40, carbs: 18, fat: 28, fiber: 4 },
+    { meal: 'Lunch',     food: 'Whole wheat wrap + hummus (3 tbsp) + veggies', qty: '360 g', cal: 430, protein: 22, carbs: 48, fat: 16, fiber: 8 },
+    { meal: 'Dinner',    food: 'Salmon fillet (6 oz) + roasted vegetables + lemon', qty: '440 g', cal: 580, protein: 44, carbs: 16, fat: 36, fiber: 4 },
+    { meal: 'Dinner',    food: 'Grilled chicken (5 oz) + tabbouleh (1 cup)', qty: '420 g', cal: 510, protein: 42, carbs: 38, fat: 18, fiber: 5 },
+    { meal: 'Snack',     food: 'Tzatziki (1/4 cup) + cucumber + bell pepper slices', qty: '200 g', cal: 180, protein: 10, carbs: 14, fat: 8, fiber: 3 },
+    { meal: 'Snack',     food: 'Feta (1.5 oz) + olives (8) + cherry tomatoes', qty: '100 g', cal: 200, protein: 8, carbs: 6, fat: 16, fiber: 1 },
   ],
   lowerCarb: [
-    ['Breakfast', 'Egg bites with greens',         '260 g', '340 kcal', '30 g protein'],
-    ['Breakfast', 'Protein chia bowl',             '240 g', '310 kcal', '27 g protein'],
-    ['Lunch',     'Chicken salad bowl',            '410 g', '470 kcal', '45 g protein'],
-    ['Lunch',     'Turkey burger lettuce plate',   '380 g', '520 kcal', '44 g protein'],
-    ['Dinner',    'Salmon asparagus plate',        '420 g', '580 kcal', '46 g protein'],
-    ['Dinner',    'Steak fajita vegetables',       '410 g', '560 kcal', '47 g protein'],
-    ['Snack',     'Tuna cucumber bites',           '150 g', '170 kcal', '22 g protein'],
-    ['Snack',     'Protein shake',                 '330 mL','210 kcal', '30 g protein'],
+    { meal: 'Breakfast', food: 'Egg bites (3) + spinach (1 cup) + cheese (1 oz)', qty: '260 g', cal: 340, protein: 30, carbs: 6, fat: 22, fiber: 2 },
+    { meal: 'Breakfast', food: 'Chia pudding (3 tbsp chia + almond milk) + protein powder', qty: '240 g', cal: 310, protein: 27, carbs: 14, fat: 16, fiber: 10 },
+    { meal: 'Lunch',     food: 'Chicken breast (6 oz) + avocado (1/2) + mixed greens', qty: '410 g', cal: 470, protein: 45, carbs: 10, fat: 28, fiber: 8 },
+    { meal: 'Lunch',     food: 'Turkey burger patty (5 oz) + lettuce wrap + tomato', qty: '380 g', cal: 520, protein: 44, carbs: 8, fat: 34, fiber: 2 },
+    { meal: 'Dinner',    food: 'Salmon fillet (6 oz) + asparagus (1 cup) + butter (1 tsp)', qty: '420 g', cal: 580, protein: 46, carbs: 8, fat: 40, fiber: 4 },
+    { meal: 'Dinner',    food: 'Steak (5 oz) + fajita peppers & onions (1.5 cups)', qty: '410 g', cal: 560, protein: 47, carbs: 14, fat: 34, fiber: 4 },
+    { meal: 'Snack',     food: 'Tuna (3 oz) + cucumber slices + mustard', qty: '150 g', cal: 170, protein: 22, carbs: 4, fat: 6, fiber: 1 },
+    { meal: 'Snack',     food: 'Whey protein shake (1 scoop) + water', qty: '330 mL', cal: 210, protein: 30, carbs: 6, fat: 4, fiber: 0 },
   ],
   vegetarian: [
-    ['Breakfast', 'Tofu vegetable scramble',       '340 g', '360 kcal', '30 g protein'],
-    ['Breakfast', 'Greek yogurt protein parfait',  '300 g', '340 kcal', '29 g protein'],
-    ['Lunch',     'Lentil quinoa bowl',            '460 g', '540 kcal', '32 g protein'],
-    ['Lunch',     'Edamame hummus plate',          '360 g', '410 kcal', '26 g protein'],
-    ['Dinner',    'Tempeh stir fry',               '420 g', '510 kcal', '36 g protein'],
-    ['Dinner',    'Paneer tikka salad bowl',       '430 g', '560 kcal', '38 g protein'],
-    ['Snack',     'Roasted chickpeas',             '55 g',  '180 kcal', '10 g protein'],
-    ['Snack',     'Protein chia pudding',          '240 g', '260 kcal', '24 g protein'],
+    { meal: 'Breakfast', food: 'Firm tofu scramble (6 oz) + bell pepper + onion', qty: '340 g', cal: 360, protein: 30, carbs: 16, fat: 20, fiber: 4 },
+    { meal: 'Breakfast', food: 'Greek yogurt (1 cup) + granola (1/4 cup) + berries', qty: '300 g', cal: 340, protein: 29, carbs: 36, fat: 8, fiber: 4 },
+    { meal: 'Lunch',     food: 'Lentils (1 cup cooked) + quinoa (3/4 cup) + greens', qty: '460 g', cal: 540, protein: 32, carbs: 72, fat: 10, fiber: 16 },
+    { meal: 'Lunch',     food: 'Edamame (1 cup) + hummus (3 tbsp) + veggies', qty: '360 g', cal: 410, protein: 26, carbs: 34, fat: 18, fiber: 10 },
+    { meal: 'Dinner',    food: 'Tempeh (5 oz) stir fry + broccoli (1 cup) + soy sauce', qty: '420 g', cal: 510, protein: 36, carbs: 32, fat: 26, fiber: 6 },
+    { meal: 'Dinner',    food: 'Paneer tikka (4 oz) + mixed salad (2 cups)', qty: '430 g', cal: 560, protein: 38, carbs: 24, fat: 36, fiber: 4 },
+    { meal: 'Snack',     food: 'Roasted chickpeas (1/3 cup)', qty: '55 g', cal: 180, protein: 10, carbs: 22, fat: 6, fiber: 6 },
+    { meal: 'Snack',     food: 'Chia pudding (2 tbsp chia) + protein powder + almond milk', qty: '240 g', cal: 260, protein: 24, carbs: 16, fat: 12, fiber: 8 },
   ],
   glp1SmallMeals: [
-    ['Breakfast', 'Soft-boiled eggs (2)',          '130 g', '180 kcal', '14 g protein'],
-    ['Breakfast', 'Greek yogurt small cup',        '150 g', '170 kcal', '17 g protein'],
-    ['Lunch',     'Chicken broth soup + protein',  '280 g', '280 kcal', '28 g protein'],
-    ['Lunch',     'Small turkey roll-ups',         '130 g', '190 kcal', '22 g protein'],
-    ['Dinner',    'Salmon 3 oz + steamed veg',     '250 g', '320 kcal', '30 g protein'],
-    ['Dinner',    'Egg white scramble + spinach',  '220 g', '240 kcal', '24 g protein'],
-    ['Snack',     'Protein shake (half serving)',  '200 mL','150 kcal', '20 g protein'],
-    ['Snack',     'Cottage cheese 4 oz',           '115 g', '110 kcal', '14 g protein'],
+    { meal: 'Breakfast', food: 'Soft-boiled eggs (2 large)', qty: '130 g', cal: 180, protein: 14, carbs: 2, fat: 12, fiber: 0 },
+    { meal: 'Breakfast', food: 'Greek yogurt (1/2 cup) plain', qty: '150 g', cal: 170, protein: 17, carbs: 10, fat: 6, fiber: 0 },
+    { meal: 'Lunch',     food: 'Chicken broth (1 cup) + shredded chicken (3 oz)', qty: '280 g', cal: 280, protein: 28, carbs: 8, fat: 14, fiber: 1 },
+    { meal: 'Lunch',     food: 'Turkey roll-ups (3 oz) + mustard + lettuce', qty: '130 g', cal: 190, protein: 22, carbs: 4, fat: 8, fiber: 1 },
+    { meal: 'Dinner',    food: 'Salmon (3 oz) + steamed broccoli (1/2 cup)', qty: '250 g', cal: 320, protein: 30, carbs: 6, fat: 18, fiber: 3 },
+    { meal: 'Dinner',    food: 'Egg white scramble (4 whites) + spinach (1 cup)', qty: '220 g', cal: 240, protein: 24, carbs: 4, fat: 12, fiber: 2 },
+    { meal: 'Snack',     food: 'Protein shake half scoop + water', qty: '200 mL', cal: 150, protein: 20, carbs: 4, fat: 2, fiber: 0 },
+    { meal: 'Snack',     food: 'Cottage cheese (1/2 cup)', qty: '115 g', cal: 110, protein: 14, carbs: 4, fat: 4, fiber: 0 },
   ],
   diabetesFriendly: [
-    ['Breakfast', 'Egg veggie scramble, no toast', '280 g', '300 kcal', '26 g protein'],
-    ['Breakfast', 'Chia flax protein bowl',        '260 g', '310 kcal', '24 g protein'],
-    ['Lunch',     'Grilled chicken salad',         '430 g', '460 kcal', '42 g protein'],
-    ['Lunch',     'Turkey and avocado plate',      '380 g', '500 kcal', '38 g protein'],
-    ['Dinner',    'Baked cod with broccoli',       '420 g', '420 kcal', '44 g protein'],
-    ['Dinner',    'Turkey meatballs + zucchini',   '400 g', '480 kcal', '42 g protein'],
-    ['Snack',     'Celery and almond butter',      '130 g', '160 kcal', '6 g protein'],
-    ['Snack',     'String cheese + cucumber',      '100 g', '140 kcal', '10 g protein'],
+    { meal: 'Breakfast', food: 'Whole eggs (2) + spinach (1 cup) + mushrooms', qty: '280 g', cal: 300, protein: 26, carbs: 8, fat: 18, fiber: 3 },
+    { meal: 'Breakfast', food: 'Chia (2 tbsp) + flaxmeal (1 tbsp) + protein powder + almond milk', qty: '260 g', cal: 310, protein: 24, carbs: 14, fat: 18, fiber: 10 },
+    { meal: 'Lunch',     food: 'Grilled chicken breast (5 oz) + mixed greens (2 cups) + vinaigrette', qty: '430 g', cal: 460, protein: 42, carbs: 12, fat: 26, fiber: 4 },
+    { meal: 'Lunch',     food: 'Turkey (4 oz) + avocado (1/2) + lettuce + tomato', qty: '380 g', cal: 500, protein: 38, carbs: 12, fat: 34, fiber: 8 },
+    { meal: 'Dinner',    food: 'Baked cod fillet (6 oz) + broccoli (1.5 cups)', qty: '420 g', cal: 420, protein: 44, carbs: 14, fat: 18, fiber: 6 },
+    { meal: 'Dinner',    food: 'Turkey meatballs (5 oz) + zucchini noodles (1.5 cups)', qty: '400 g', cal: 480, protein: 42, carbs: 16, fat: 26, fiber: 4 },
+    { meal: 'Snack',     food: 'Celery (3 stalks) + almond butter (1 tbsp)', qty: '130 g', cal: 160, protein: 6, carbs: 8, fat: 12, fiber: 3 },
+    { meal: 'Snack',     food: 'String cheese (1) + cucumber slices (1/2 cup)', qty: '100 g', cal: 140, protein: 10, carbs: 4, fat: 8, fiber: 1 },
   ],
 }
 
@@ -390,6 +402,57 @@ export default function Tracking() {
   const [carbs, setCarbs] = useState('')
   const [fat, setFat] = useState('')
   const [fiber, setFiber] = useState('')
+
+  // USDA food search
+  const [foodQuery, setFoodQuery] = useState('')
+  const [foodResults, setFoodResults] = useState<USDAFood[]>([])
+  const [searching, setSearching] = useState(false)
+  const [showResults, setShowResults] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
+
+  const doSearch = useCallback((q: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!q.trim()) { setFoodResults([]); setSearching(false); return }
+    setSearching(true)
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await searchFoods(q)
+        setFoodResults(results)
+      } catch {
+        setFoodResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 400)
+  }, [])
+
+  function selectUSDAFood(food: USDAFood) {
+    setCustomName(food.description)
+    const servingLabel = food.servingSize && food.servingSizeUnit
+      ? `${food.servingSize} ${food.servingSizeUnit}`
+      : '100 g'
+    setServing(servingLabel)
+    setCalories(String(food.calories))
+    setProtein(String(food.protein))
+    setCarbs(String(food.carbs))
+    setFat(String(food.fat))
+    setFiber(String(food.fiber))
+    setMealPreset('custom')
+    setFoodQuery('')
+    setFoodResults([])
+    setShowResults(false)
+  }
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowResults(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     try {
@@ -683,23 +746,60 @@ export default function Tracking() {
               </Badge>
             </CardHeader>
             <CardContent>
+              {/* USDA food search */}
+              <div ref={searchRef} className="relative mb-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search USDA foods (e.g. greek yogurt, chicken breast)…"
+                    value={foodQuery}
+                    onChange={(e) => { setFoodQuery(e.target.value); setShowResults(true); doSearch(e.target.value) }}
+                    onFocus={() => { if (foodResults.length > 0) setShowResults(true) }}
+                    className="w-full border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-white"
+                  />
+                  {searching && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                  )}
+                </div>
+                {showResults && foodResults.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                    {foodResults.map((food) => (
+                      <button
+                        key={food.fdcId}
+                        onClick={() => selectUSDAFood(food)}
+                        className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                      >
+                        <p className="text-sm font-semibold text-slate-800 leading-tight">{food.description}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {food.servingSize && food.servingSizeUnit ? `${food.servingSize} ${food.servingSizeUnit}` : '100 g'}
+                          {' · '}{food.calories} kcal · {food.protein}g protein · {food.carbs}g carbs · {food.fat}g fat
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <Select label="Type" value={mealType} options={MEAL_TYPE_OPTIONS}
                   onChange={(e) => { setMealType(e.target.value); setMealPreset('0'); applyPreset(e.target.value, '0') }} />
                 <Select label="Preset" value={mealPreset} options={presetOptions}
                   onChange={(e) => { setMealPreset(e.target.value); applyPreset(mealType, e.target.value) }} />
-                <Input label="Custom name" placeholder="Optional override" value={customName}
+                <Input label="Food name" placeholder="Name or select from search above" value={customName}
                   onChange={(e) => setCustomName(e.target.value)} />
-                <Input label="Serving" placeholder="e.g. 1 serving" value={serving}
+                <Input label="Serving" placeholder="e.g. 1 cup, 100 g" value={serving}
                   onChange={(e) => setServing(e.target.value)} />
                 <Input label="Calories" type="number" min={0} suffix="kcal" value={calories}
                   onChange={(e) => setCalories(e.target.value)} />
                 <Input label="Protein" type="number" min={0} suffix="g" value={protein}
                   onChange={(e) => setProtein(e.target.value)} />
-                <Input label="Carbs" type="number" min={0} suffix="g" placeholder="Optional" value={carbs}
+                <Input label="Carbs" type="number" min={0} suffix="g" value={carbs}
                   onChange={(e) => setCarbs(e.target.value)} />
-                <Input label="Fat" type="number" min={0} suffix="g" placeholder="Optional" value={fat}
+                <Input label="Fat" type="number" min={0} suffix="g" value={fat}
                   onChange={(e) => setFat(e.target.value)} />
+                <Input label="Fiber" type="number" min={0} suffix="g" value={fiber}
+                  onChange={(e) => setFiber(e.target.value)} />
               </div>
               <Button onClick={saveMeal} size="sm">
                 {editingId ? 'Save changes' : 'Add meal'}
@@ -739,13 +839,20 @@ export default function Tracking() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {dietRows.map(([meal, food, servingAmt, cal, prot], i) => (
-                <div key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 border border-slate-100 rounded-xl px-4 py-3 bg-slate-50 text-sm">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600 shrink-0">{meal}</span>
-                  <span className="font-semibold text-slate-800 flex-1 min-w-[140px]">{food}</span>
-                  <span className="text-slate-400 font-medium text-xs">{servingAmt}</span>
-                  <span className="text-slate-600 font-semibold text-xs">{cal}</span>
-                  <span className="text-teal-700 font-semibold text-xs">{prot}</span>
+              {dietRows.map((entry, i) => (
+                <div key={i} className="border border-slate-100 rounded-xl px-4 py-3 bg-slate-50 text-sm">
+                  <div className="flex items-start gap-2 mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600 shrink-0 mt-0.5">{entry.meal}</span>
+                    <span className="font-semibold text-slate-800">{entry.food}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                    <span className="text-slate-400 font-medium">{entry.qty}</span>
+                    <span className="text-slate-600 font-semibold">{entry.cal} kcal</span>
+                    <span className="text-teal-700 font-semibold">{entry.protein}g protein</span>
+                    <span className="text-amber-600 font-semibold">{entry.carbs}g carbs</span>
+                    <span className="text-rose-600 font-semibold">{entry.fat}g fat</span>
+                    {entry.fiber > 0 && <span className="text-violet-600 font-semibold">{entry.fiber}g fiber</span>}
+                  </div>
                 </div>
               ))}
             </div>
