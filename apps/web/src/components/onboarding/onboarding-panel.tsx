@@ -1,6 +1,6 @@
 'use client'
 
-import { X, RefreshCw } from 'lucide-react'
+import { X } from 'lucide-react'
 import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
@@ -53,22 +53,6 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
     onChange({ ...profile, [key]: value })
   }
 
-  function resetProfile() {
-    onChange({
-      age: 40,
-      sex: 'female',
-      heightInches: 65,
-      weightLbs: 180,
-      bodyFatPercent: 30,
-      waistInches: 36,
-      activityLevel: 'sedentary',
-      goal: 'moderateLoss',
-      onGlp1: false,
-      symptoms: [],
-      conditions: [],
-    })
-  }
-
   const toggleSymptom = (s: Symptom) => {
     const current = profile.symptoms
     update(
@@ -86,9 +70,6 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
           <h2 className="text-base font-bold text-slate-800 mt-0.5">User Profile</h2>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" className="w-8 h-8 p-0 rounded-xl" onClick={resetProfile} title="Reset">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
           {onClose && (
             <Button variant="ghost" size="sm" className="w-8 h-8 p-0 rounded-xl" onClick={onClose}>
               <X className="w-3.5 h-3.5" />
