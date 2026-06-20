@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
-import { Camera, Scale, History, ChevronLeft } from 'lucide-react'
+import { Camera, Scale, History, ChevronLeft, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -277,10 +277,14 @@ export default function Progress() {
   }
 
   function submitPhotos() {
+    const existing = loadTodayPhotos()
     const log: PhotoLog = {
       date: todayDateString(),
       loggedAt: Date.now(),
-      ...staged,
+      front: staged.front ?? existing.front,
+      back: staged.back ?? existing.back,
+      left: staged.left ?? existing.left,
+      right: staged.right ?? existing.right,
     }
     saveTodayPhotos(log)
     setUploadOpen(false)
@@ -288,6 +292,8 @@ export default function Progress() {
   }
 
   const stagedCount = PHOTO_ANGLES.filter((a) => staged[a]).length
+  const existingToday = useMemo(() => (uploadOpen ? loadTodayPhotos() : null), [uploadOpen])
+  const replacingAngles = existingToday ? PHOTO_ANGLES.filter((a) => staged[a] && existingToday[a]) : []
 
   function closePhotoHistory() {
     setPhotoHistoryOpen(false)
@@ -473,6 +479,14 @@ export default function Progress() {
                 <p className="text-xs text-slate-400 mt-3">
                   Use consistent lighting, posture, and distance for accurate comparison.
                 </p>
+                {replacingAngles.length > 0 && (
+                  <div className="flex gap-2 p-3 mt-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <p className="text-xs">
+                      This will replace your existing <strong>{replacingAngles.join(', ')}</strong> photo{replacingAngles.length > 1 ? 's' : ''} for today.
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center justify-between mt-4">
                   <Button variant="secondary" size="sm" onClick={() => { setUploadOpen(false); setStaged({ front: null, back: null, left: null, right: null }) }}>
                     Cancel
