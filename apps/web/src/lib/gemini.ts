@@ -60,8 +60,10 @@ export async function analyzeMealPhoto(imageDataUrl: string): Promise<MealAnalys
   })
 
   if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Gemini API error ${res.status}: ${err}`)
+    if (res.status === 429) {
+      throw new Error('Rate limit reached — please wait a moment and try again')
+    }
+    throw new Error(`Analysis failed (${res.status}) — please try again`)
   }
 
   const data = await res.json()

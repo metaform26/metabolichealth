@@ -712,8 +712,16 @@ export default function Tracking() {
               </label>
 
               {aiError && (
-                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700 mb-3">
-                  {aiError}
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700 mb-3 flex items-center justify-between">
+                  <span>{aiError}</span>
+                  {photoPreview && (
+                    <button
+                      onClick={() => analyzePhoto(photoPreview)}
+                      className="text-red-700 font-semibold underline ml-2 shrink-0"
+                    >
+                      Retry
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -744,9 +752,16 @@ export default function Tracking() {
                 </div>
               )}
 
-              <Button onClick={logPhotoMeal} size="sm" disabled={!aiResult}>
-                {analyzing ? 'Analyzing...' : aiResult ? 'Log meal' : 'Upload a photo to analyze'}
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={logPhotoMeal} size="sm" disabled={!aiResult}>
+                  {analyzing ? 'Analyzing...' : aiResult ? 'Log meal' : 'Upload a photo to analyze'}
+                </Button>
+                {(aiResult || aiError) && (
+                  <Button variant="secondary" size="sm" onClick={() => { setPhotoPreview(null); setAiResult(null); setAiError(null) }}>
+                    Clear
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
 
