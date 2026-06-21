@@ -20,7 +20,7 @@ const fallbackProfile: UserProfile = {
   waistInches: 34,
   activityLevel: 'sedentary',
   goal: 'moderateLoss',
-  userGoals: { targetWeightLbs: null, targetBodyFatPercent: null, targetWeeks: null },
+  userGoals: { targetWeightLbs: null, targetBodyFatPercent: null, targetDays: null },
   conditionFocus: [],
   onGlp1: false,
   symptoms: [],
@@ -52,7 +52,7 @@ export default function Dashboard() {
           userGoals: {
             targetWeightLbs: data.target_weight_lbs ?? null,
             targetBodyFatPercent: data.target_body_fat_percent ?? null,
-            targetWeeks: data.target_weeks ?? null,
+            targetDays: data.target_days ?? null,
           },
           conditionFocus: (data.condition_focus ?? []) as ConditionFocus[],
           onGlp1: data.on_glp1,

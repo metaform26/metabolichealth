@@ -37,7 +37,7 @@ export type ConditionFocus =
 export interface UserGoals {
   targetWeightLbs: number | null
   targetBodyFatPercent: number | null
-  targetWeeks: number | null
+  targetDays: number | null
 }
 
 export interface BaselineData {

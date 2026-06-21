@@ -10,29 +10,69 @@ function getMinBodyFat(sex: 'male' | 'female') { return sex === 'male' ? 8 : 16 
 function getHealthyRange(sex: 'male' | 'female') { return sex === 'male' ? '10–20%' : '18–28%' }
 function getAthleticRange(sex: 'male' | 'female') { return sex === 'male' ? '10–15%' : '18–23%' }
 
-function estimateWeeks(currentLbs: number, targetLbs: number, currentBf: number, targetBf: number, goal: GoalType): { weeks: number; warning: string | null } {
+interface SafetyCheck {
+  safe: boolean
+  minDays: number
+  maxDays: number
+  warning: string | null
+  info: string
+}
+
+function checkTimeline(currentLbs: number, targetLbs: number, currentBf: number, targetBf: number, days: number, goal: GoalType): SafetyCheck {
   if (goal === 'recomposition') {
     const bfDiff = currentBf - targetBf
-    if (bfDiff <= 0) return { weeks: 0, warning: null }
-    const weeks = Math.ceil(bfDiff / 0.5)
-    return { weeks, warning: null }
+    if (bfDiff <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Body recomposition — weight stays stable while body fat decreases' }
+    const minWeeks = Math.ceil(bfDiff / 0.5)
+    const minDays = minWeeks * 7
+    const safe = days >= minDays
+    return {
+      safe,
+      minDays,
+      maxDays: minDays * 3,
+      warning: safe ? null : `Too aggressive — minimum safe timeline is ${minDays} days (${minWeeks} weeks) for ${bfDiff.toFixed(1)}% BF reduction`,
+      info: `Recommended pace: ~0.5% body fat per week`,
+    }
   }
+
   if (goal === 'leanGain') {
     const gain = targetLbs - currentLbs
-    if (gain <= 0) return { weeks: 0, warning: null }
-    const monthlyGain = currentLbs * 0.00375
-    const months = gain / monthlyGain
-    return { weeks: Math.ceil(months * 4.33), warning: null }
+    if (gain <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Set a target weight above your current weight for lean gain' }
+    const monthlyRate = currentLbs * 0.00375
+    const minMonths = gain / (currentLbs * 0.005)
+    const maxMonths = gain / (currentLbs * 0.0025)
+    const minDays = Math.ceil(minMonths * 30.44)
+    const maxDays = Math.ceil(maxMonths * 30.44)
+    const actualMonths = days / 30.44
+    const actualPerMonth = gain / actualMonths
+    const safe = days >= minDays
+    return {
+      safe,
+      minDays,
+      maxDays,
+      warning: safe ? null : `Too fast — minimum safe timeline is ${minDays} days. Recommended gain: 0.25–0.5% of body weight/month (${(currentLbs * 0.0025).toFixed(1)}–${(currentLbs * 0.005).toFixed(1)} lb/month)`,
+      info: `Recommended pace: ${(currentLbs * 0.0025).toFixed(1)}–${(currentLbs * 0.005).toFixed(1)} lb/month`,
+    }
   }
+
+  // Fat loss goals
   const loss = currentLbs - targetLbs
-  if (loss <= 0) return { weeks: 0, warning: null }
+  if (loss <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Set a target weight below your current weight for fat loss' }
+  const maxPerWeek = currentLbs * 0.01
   const safePerWeek = currentLbs * 0.0075
-  const weeks = Math.ceil(loss / safePerWeek)
+  const minWeeks = Math.ceil(loss / maxPerWeek)
+  const recommendedWeeks = Math.ceil(loss / safePerWeek)
+  const minDays = minWeeks * 7
+  const recommendedDays = recommendedWeeks * 7
+  const weeks = days / 7
   const actualPerWeek = loss / weeks
-  const warning = actualPerWeek > currentLbs * 0.01
-    ? `Projected loss of ${actualPerWeek.toFixed(1)} lb/week exceeds 1% of body weight — consider a longer timeline`
-    : null
-  return { weeks, warning }
+  const safe = days >= minDays
+  return {
+    safe,
+    minDays,
+    maxDays: recommendedDays * 2,
+    warning: safe ? null : `Unsafe — ${actualPerWeek.toFixed(1)} lb/week exceeds 1% of body weight (${maxPerWeek.toFixed(1)} lb/week). Minimum safe timeline: ${minDays} days`,
+    info: `Recommended pace: ${(currentLbs * 0.005).toFixed(1)}–${maxPerWeek.toFixed(1)} lb/week (0.5–1.0% body weight)`,
+  }
 }
 
 interface OnboardingPanelProps {
@@ -202,7 +242,7 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
           Current: {profile.weightLbs} lb · {profile.bodyFatPercent}% body fat.
           Healthy BF range: {getHealthyRange(profile.sex)} · Athletic: {getAthleticRange(profile.sex)}
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <NumberInput
             label="Target Weight"
             suffix="lb"
@@ -222,6 +262,19 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
               update('userGoals', { ...profile.userGoals, targetBodyFatPercent: Math.max(v, min) })
             }}
           />
+          <NumberInput
+            label="Duration"
+            suffix="days"
+            min={7}
+            max={730}
+            value={profile.userGoals.targetDays ?? 90}
+            onValueChange={(v) => {
+              const tw = profile.userGoals.targetWeightLbs ?? profile.weightLbs
+              const tbf = profile.userGoals.targetBodyFatPercent ?? profile.bodyFatPercent
+              const check = checkTimeline(profile.weightLbs, tw, profile.bodyFatPercent, tbf, v, profile.goal)
+              update('userGoals', { ...profile.userGoals, targetDays: check.safe ? v : Math.max(v, check.minDays) })
+            }}
+          />
         </div>
         {profile.userGoals.targetBodyFatPercent !== null && profile.userGoals.targetBodyFatPercent < getMinBodyFat(profile.sex) && (
           <div className="flex gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
@@ -232,21 +285,27 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
         {(() => {
           const tw = profile.userGoals.targetWeightLbs ?? profile.weightLbs
           const tbf = profile.userGoals.targetBodyFatPercent ?? profile.bodyFatPercent
+          const days = profile.userGoals.targetDays ?? 90
           if (tw === profile.weightLbs && tbf === profile.bodyFatPercent) return null
-          const est = estimateWeeks(profile.weightLbs, tw, profile.bodyFatPercent, tbf, profile.goal)
-          if (est.weeks <= 0) return null
+          const check = checkTimeline(profile.weightLbs, tw, profile.bodyFatPercent, tbf, days, profile.goal)
           return (
             <div className="space-y-2">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-xs text-slate-500 font-medium">
+                {check.info}
+              </div>
               <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2.5 text-xs text-teal-700 font-medium">
-                Estimated timeline: ~{est.weeks} weeks ({Math.round(est.weeks / 4.33)} months)
+                {days} days ({Math.round(days / 7)} weeks · {Math.round(days / 30.44)} months)
                 {tw !== profile.weightLbs && <> · {Math.abs(profile.weightLbs - tw).toFixed(1)} lb {tw < profile.weightLbs ? 'to lose' : 'to gain'}</>}
                 {tbf !== profile.bodyFatPercent && <> · {Math.abs(profile.bodyFatPercent - tbf).toFixed(1)}% BF change</>}
               </div>
-              {est.warning && (
-                <div className="flex gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
+              {check.warning && (
+                <div className="flex gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p className="text-xs">{est.warning}</p>
+                  <p className="text-xs font-medium">{check.warning}</p>
                 </div>
+              )}
+              {check.safe && check.minDays > 0 && (
+                <p className="text-[11px] text-slate-400">Minimum safe duration: {check.minDays} days</p>
               )}
             </div>
           )
