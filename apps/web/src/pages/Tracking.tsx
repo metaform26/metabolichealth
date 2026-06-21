@@ -8,31 +8,13 @@ import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { NumberInput } from '@/components/ui/number-input'
 import { Modal } from '@/components/ui/modal'
-import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft, Search } from 'lucide-react'
+import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft, Search, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { searchFoods, type USDAFood } from '@/lib/usda'
+import { analyzeMealPhoto, type MealAnalysis } from '@/lib/gemini'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const MEAL_ESTIMATES: Record<string, { label: string; calories: number; protein: number; carbs: number; fat: number }> = {
-  proteinBowl:       { label: 'Protein bowl',            calories: 520, protein: 38, carbs: 48, fat: 18 },
-  salad:             { label: 'Salad with protein',       calories: 430, protein: 34, carbs: 26, fat: 21 },
-  sandwich:          { label: 'Sandwich or wrap',         calories: 610, protein: 32, carbs: 64, fat: 24 },
-  pasta:             { label: 'Pasta or rice meal',       calories: 720, protein: 30, carbs: 92, fat: 24 },
-  smoothie:          { label: 'Smoothie / shake',         calories: 360, protein: 28, carbs: 42, fat:  8 },
-  eggsToast:         { label: 'Eggs and toast',           calories: 420, protein: 25, carbs: 38, fat: 18 },
-  oatmeal:           { label: 'Oatmeal bowl',             calories: 390, protein: 18, carbs: 58, fat: 11 },
-  chickenRice:       { label: 'Chicken and rice',         calories: 640, protein: 46, carbs: 70, fat: 18 },
-  tacos:             { label: 'Tacos',                    calories: 560, protein: 32, carbs: 54, fat: 24 },
-  soup:              { label: 'Soup and side',            calories: 430, protein: 24, carbs: 48, fat: 15 },
-  pizza:             { label: 'Pizza meal',               calories: 760, protein: 30, carbs: 82, fat: 34 },
-  burger:            { label: 'Burger plate',             calories: 820, protein: 38, carbs: 72, fat: 42 },
-  sushi:             { label: 'Sushi meal',               calories: 540, protein: 28, carbs: 76, fat: 12 },
-  curry:             { label: 'Curry bowl',               calories: 690, protein: 34, carbs: 78, fat: 26 },
-  stirFry:           { label: 'Stir fry',                 calories: 570, protein: 40, carbs: 52, fat: 20 },
-  breakfastBurrito:  { label: 'Breakfast burrito',        calories: 620, protein: 34, carbs: 58, fat: 28 },
-  fruitProteinSnack: { label: 'Fruit and protein snack',  calories: 280, protein: 22, carbs: 32, fat:  7 },
-}
 
 const MEAL_PRESETS: { type: string; meal: string; serving: string; calories: number; protein: number }[] = [
   { type: 'Breakfast', meal: 'Eggs and toast',         serving: '280 g',  calories: 420, protein: 25 },
@@ -127,7 +109,6 @@ const DIET_CHARTS: Record<string, DietChartEntry[]> = {
   ],
 }
 
-const PORTION_FACTORS: Record<string, number> = { small: 0.75, medium: 1, large: 1.35 }
 
 const WORKOUT_PLANS: Record<string, string[]> = {
   moderateLoss:   ['Full-body lift', 'Zone 2 cardio 30 min', 'Walk after meals', 'Full-body lift', 'Zone 2 cardio 30 min', 'Active recovery'],
@@ -462,11 +443,12 @@ export default function Tracking() {
     }
   }, [mealLogs])
 
-  // Photo estimate
-  const [photoType, setPhotoType] = useState('proteinBowl')
+  // Photo estimate (AI-powered)
   const [photoMeal, setPhotoMeal] = useState('Breakfast')
-  const [photoPortion, setPhotoPortion] = useState('medium')
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [aiResult, setAiResult] = useState<MealAnalysis | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   // Diet chart + workout
   const [dietPref, setDietPref] = useState('highProtein')
@@ -487,14 +469,18 @@ export default function Tracking() {
   const effectiveCals = mealLogs.length > 0 ? Math.min(3200, totalCals) : calorieLogged
   const effectiveProtein = mealLogs.length > 0 ? Math.min(240, totalProtein) : proteinLogged
 
-  // Photo estimate preview
-  const photoBase = MEAL_ESTIMATES[photoType]
-  const photoFactor = PORTION_FACTORS[photoPortion]
-  const photoEst = {
-    calories: Math.round(photoBase.calories * photoFactor / 10) * 10,
-    protein: Math.round(photoBase.protein * photoFactor),
-    carbs: Math.round(photoBase.carbs * photoFactor),
-    fat: Math.round(photoBase.fat * photoFactor),
+  async function analyzePhoto(dataUrl: string) {
+    setAnalyzing(true)
+    setAiError(null)
+    setAiResult(null)
+    try {
+      const result = await analyzeMealPhoto(dataUrl)
+      setAiResult(result)
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Failed to analyze photo')
+    } finally {
+      setAnalyzing(false)
+    }
   }
 
   function applyPreset(type: string, idx: string) {
@@ -554,28 +540,32 @@ export default function Tracking() {
   }
 
   function logPhotoMeal() {
+    if (!aiResult) return
     const log: MealLog = {
       id: crypto.randomUUID(),
       type: photoMeal,
-      meal: `AI photo estimate: ${photoBase.label}`,
-      serving: `${photoPortion} portion`,
-      calories: photoEst.calories,
-      protein: photoEst.protein,
-      carbs: photoEst.carbs,
-      fat: photoEst.fat,
-      fiber: null,
+      meal: aiResult.description || aiResult.foods.map((f) => f.name).join(', '),
+      serving: aiResult.foods.map((f) => `${f.name} (${f.quantity})`).join(', '),
+      calories: aiResult.totalCalories,
+      protein: aiResult.totalProtein,
+      carbs: aiResult.totalCarbs,
+      fat: aiResult.totalFat,
+      fiber: aiResult.totalFiber,
       loggedAt: Date.now(),
       ...(photoPreview ? { photo: photoPreview } : {}),
     }
     setMealLogs((prev) => [...prev, log])
     setPhotoPreview(null)
+    setAiResult(null)
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      setPhotoPreview(await resizeImageToDataUrl(file))
+      const dataUrl = await resizeImageToDataUrl(file)
+      setPhotoPreview(dataUrl)
+      analyzePhoto(dataUrl)
     } catch {
       // unreadable file — ignore
     }
@@ -590,8 +580,6 @@ export default function Tracking() {
   const dietRows = DIET_CHARTS[dietPref] ?? DIET_CHARTS.highProtein
 
   const MEAL_TYPE_OPTIONS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'].map((v) => ({ value: v, label: v }))
-  const PHOTO_TYPE_OPTIONS = Object.entries(MEAL_ESTIMATES).map(([v, e]) => ({ value: v, label: e.label }))
-  const PORTION_OPTIONS = [{ value: 'small', label: 'Small' }, { value: 'medium', label: 'Medium' }, { value: 'large', label: 'Large' }]
   const DIET_OPTIONS = [
     { value: 'highProtein', label: 'High protein balanced' },
     { value: 'mediterranean', label: 'Mediterranean' },
@@ -694,43 +682,71 @@ export default function Tracking() {
 
         {/* ── Photo estimate + Meal log ────────────────────────── */}
         <div className="grid lg:grid-cols-2 gap-5">
-          {/* Photo estimate */}
+          {/* Photo estimate — AI powered */}
           <Card>
             <CardHeader>
               <div>
                 <CardEyebrow>AI smart log</CardEyebrow>
-                <CardTitle>Quick Photo Estimate</CardTitle>
+                <CardTitle>Photo Meal Analysis</CardTitle>
               </div>
-              <Badge variant="teal">AI estimate</Badge>
+              <Badge variant="teal">Gemini AI</Badge>
             </CardHeader>
             <CardContent>
               {/* Upload box */}
-              <label className="flex flex-col items-center justify-center min-h-[110px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-colors mb-4 overflow-hidden">
+              <label className="flex flex-col items-center justify-center min-h-[110px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-colors mb-4 overflow-hidden relative">
                 <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                 {photoPreview ? (
                   <img src={photoPreview} alt="Uploaded meal" className="max-h-28 rounded-xl object-contain py-2" />
                 ) : (
                   <>
                     <Camera className="w-7 h-7 text-slate-300 mb-2" />
-                    <span className="text-sm font-medium text-slate-400">Upload meal photo</span>
+                    <span className="text-sm font-medium text-slate-400">Upload a meal photo to analyze</span>
                   </>
+                )}
+                {analyzing && (
+                  <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-2xl">
+                    <Loader2 className="w-6 h-6 text-teal-600 animate-spin" />
+                    <span className="ml-2 text-sm font-medium text-teal-700">Analyzing...</span>
+                  </div>
                 )}
               </label>
 
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <Select label="Log as" value={photoMeal}
-                  onChange={(e) => setPhotoMeal(e.target.value)} options={MEAL_TYPE_OPTIONS} />
-                <Select label="Meal type" value={photoType}
-                  onChange={(e) => setPhotoType(e.target.value)} options={PHOTO_TYPE_OPTIONS} />
-                <Select label="Portion" value={photoPortion}
-                  onChange={(e) => setPhotoPortion(e.target.value)} options={PORTION_OPTIONS} />
-              </div>
+              {aiError && (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700 mb-3">
+                  {aiError}
+                </div>
+              )}
 
-              <div className="rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-700 mb-3">
-                Estimated {photoEst.calories} kcal · {photoEst.protein}g protein · {photoEst.carbs}g carbs · {photoEst.fat}g fat
-              </div>
+              {aiResult && (
+                <div className="space-y-3 mb-3">
+                  <div className="rounded-xl border border-teal-100 bg-teal-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-teal-800 mb-2">{aiResult.description}</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold">
+                      <span className="text-slate-700">{aiResult.totalCalories} kcal</span>
+                      <span className="text-teal-700">{aiResult.totalProtein}g protein</span>
+                      <span className="text-amber-600">{aiResult.totalCarbs}g carbs</span>
+                      <span className="text-rose-600">{aiResult.totalFat}g fat</span>
+                      {aiResult.totalFiber > 0 && <span className="text-violet-600">{aiResult.totalFiber}g fiber</span>}
+                    </div>
+                  </div>
+                  {aiResult.foods.length > 1 && (
+                    <div className="space-y-1.5">
+                      {aiResult.foods.map((food, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs">
+                          <span className="font-medium text-slate-700">{food.name} <span className="text-slate-400">({food.quantity})</span></span>
+                          <span className="text-slate-500">{food.calories} kcal · {food.protein}g P</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Select label="Log as" value={photoMeal}
+                    onChange={(e) => setPhotoMeal(e.target.value)} options={MEAL_TYPE_OPTIONS} />
+                </div>
+              )}
 
-              <Button onClick={logPhotoMeal} size="sm">Log photo estimate</Button>
+              <Button onClick={logPhotoMeal} size="sm" disabled={!aiResult}>
+                {analyzing ? 'Analyzing...' : aiResult ? 'Log meal' : 'Upload a photo to analyze'}
+              </Button>
             </CardContent>
           </Card>
 
