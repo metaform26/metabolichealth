@@ -24,12 +24,11 @@ interface PhotoLog {
   loggedAt: number
   front: string | null
   back: string | null
-  left: string | null
-  right: string | null
+  side: string | null
 }
 
 const PHOTO_LOG_PREFIX = 'mh:progress-photos:'
-const PHOTO_ANGLES = ['front', 'back', 'left', 'right'] as const
+const PHOTO_ANGLES = ['front', 'back', 'side'] as const
 type PhotoAngle = (typeof PHOTO_ANGLES)[number]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,7 +92,7 @@ function loadTodayPhotos(): PhotoLog {
     const raw = localStorage.getItem(`${PHOTO_LOG_PREFIX}${todayDateString()}`)
     if (raw) return JSON.parse(raw)
   } catch { /* ignore */ }
-  return { date: todayDateString(), loggedAt: Date.now(), front: null, back: null, left: null, right: null }
+  return { date: todayDateString(), loggedAt: Date.now(), front: null, back: null, side: null }
 }
 
 function saveTodayPhotos(log: PhotoLog) {
@@ -253,7 +252,7 @@ export default function Progress() {
   const [targetWeight, setTargetWeight] = useState('')
   const [targetBodyFat, setTargetBodyFat] = useState('')
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [staged, setStaged] = useState<Record<PhotoAngle, string | null>>({ front: null, back: null, left: null, right: null })
+  const [staged, setStaged] = useState<Record<PhotoAngle, string | null>>({ front: null, back: null, side: null })
   const [photoHistoryOpen, setPhotoHistoryOpen] = useState(false)
   const [selectedPhotoDate, setSelectedPhotoDate] = useState<string | null>(null)
   const photoHistory = useMemo(() => (photoHistoryOpen ? loadPhotoHistory() : []), [photoHistoryOpen])
@@ -265,8 +264,7 @@ export default function Progress() {
   const fileRefs = {
     front: useRef<HTMLInputElement>(null),
     back: useRef<HTMLInputElement>(null),
-    left: useRef<HTMLInputElement>(null),
-    right: useRef<HTMLInputElement>(null),
+    side: useRef<HTMLInputElement>(null),
   }
 
   async function handlePhotoUpload(angle: PhotoAngle, e: React.ChangeEvent<HTMLInputElement>) {
@@ -283,12 +281,11 @@ export default function Progress() {
       loggedAt: Date.now(),
       front: staged.front ?? existing.front,
       back: staged.back ?? existing.back,
-      left: staged.left ?? existing.left,
-      right: staged.right ?? existing.right,
+      side: staged.side ?? existing.side,
     }
     saveTodayPhotos(log)
     setUploadOpen(false)
-    setStaged({ front: null, back: null, left: null, right: null })
+    setStaged({ front: null, back: null, side: null })
   }
 
   const stagedCount = PHOTO_ANGLES.filter((a) => staged[a]).length
@@ -445,7 +442,7 @@ export default function Progress() {
           <CardContent>
             {uploadOpen ? (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {PHOTO_ANGLES.map((angle) => (
                     <div
                       key={angle}
@@ -488,18 +485,18 @@ export default function Progress() {
                   </div>
                 )}
                 <div className="flex items-center justify-between mt-4">
-                  <Button variant="secondary" size="sm" onClick={() => { setUploadOpen(false); setStaged({ front: null, back: null, left: null, right: null }) }}>
+                  <Button variant="secondary" size="sm" onClick={() => { setUploadOpen(false); setStaged({ front: null, back: null, side: null }) }}>
                     Cancel
                   </Button>
                   <Button size="sm" onClick={submitPhotos} disabled={stagedCount === 0}>
-                    Submit {stagedCount > 0 && `(${stagedCount}/4)`}
+                    Submit {stagedCount > 0 && `(${stagedCount}/3)`}
                   </Button>
                 </div>
               </>
             ) : (
               <div className="flex flex-col items-center gap-3 py-8">
                 <Camera className="w-8 h-8 text-slate-300" />
-                <p className="text-sm text-slate-500">Log progress photos from 4 angles</p>
+                <p className="text-sm text-slate-500">Log progress photos from 3 angles</p>
                 <Button onClick={() => setUploadOpen(true)}>
                   <Camera className="w-4 h-4" />
                   Upload Photos
@@ -522,7 +519,7 @@ export default function Progress() {
               All dates
             </button>
             <p className="text-sm font-bold text-slate-800 mb-3">{formatPhotoDate(selectedPhotoEntry.date)}</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {PHOTO_ANGLES.map((angle) => (
                 <div key={angle} className="rounded-xl overflow-hidden border border-slate-100 bg-slate-50">
                   {selectedPhotoEntry[angle] ? (
@@ -553,7 +550,7 @@ export default function Progress() {
                   className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
                 >
                   <span className="text-sm font-semibold text-slate-700">{formatPhotoDate(entry.date)}</span>
-                  <span className="text-xs text-slate-400 font-medium">{count}/4 photos</span>
+                  <span className="text-xs text-slate-400 font-medium">{count}/3 photos</span>
                 </button>
               )
             })}
