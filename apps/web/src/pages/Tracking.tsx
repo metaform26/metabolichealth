@@ -689,7 +689,7 @@ export default function Tracking() {
                 <CardEyebrow>AI smart log</CardEyebrow>
                 <CardTitle>Photo Meal Analysis</CardTitle>
               </div>
-              <Badge variant="teal">Gemini AI</Badge>
+              <Badge variant="teal">AI powered</Badge>
             </CardHeader>
             <CardContent>
               {/* Upload box */}

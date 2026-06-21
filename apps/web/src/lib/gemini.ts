@@ -1,5 +1,4 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
-const BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+const API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''
 
 export interface MealAnalysis {
   foods: {
@@ -37,25 +36,30 @@ Return ONLY valid JSON in this exact format, no markdown or extra text:
 Use USDA-standard nutritional values. Round all numbers to integers. If you cannot identify the food clearly, give your best estimate based on what the image looks like.`
 
 export async function analyzeMealPhoto(imageDataUrl: string): Promise<MealAnalysis> {
-  if (!API_KEY) throw new Error('Gemini API key not configured')
+  if (!API_KEY) throw new Error('OpenAI API key not configured')
 
   const base64 = imageDataUrl.split(',')[1]
   const mimeType = imageDataUrl.split(';')[0].split(':')[1] || 'image/jpeg'
 
-  const res = await fetch(`${BASE}?key=${API_KEY}`, {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+    },
     body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: PROMPT },
-          { inline_data: { mime_type: mimeType, data: base64 } },
-        ],
-      }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 1024,
-      },
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: PROMPT },
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          ],
+        },
+      ],
+      max_tokens: 1024,
+      temperature: 0.1,
     }),
   })
 
@@ -67,8 +71,8 @@ export async function analyzeMealPhoto(imageDataUrl: string): Promise<MealAnalys
   }
 
   const data = await res.json()
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) throw new Error('No response from Gemini')
+  const text = data.choices?.[0]?.message?.content
+  if (!text) throw new Error('No response from OpenAI')
 
   const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
   return JSON.parse(cleaned) as MealAnalysis
