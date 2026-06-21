@@ -19,31 +19,32 @@ export interface SafetyCheck {
 }
 
 export function checkTimeline(currentLbs: number, targetLbs: number, currentBf: number, targetBf: number, days: number, goal: GoalType): SafetyCheck {
-  if (goal === 'recomposition') {
-    const bfDiff = currentBf - targetBf
-    if (bfDiff <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Body recomposition — weight stays stable while body fat decreases' }
-    const minWeeks = Math.ceil(bfDiff / 0.5)
+  const isLosing = targetLbs < currentLbs
+  const isGaining = targetLbs > currentLbs
+  const bfDrop = currentBf - targetBf
+
+  // Recomposition: weight stable, BF decreases
+  if (goal === 'recomposition' && !isLosing && !isGaining) {
+    if (bfDrop <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Body recomposition — weight stays stable while body fat decreases' }
+    const minWeeks = Math.ceil(bfDrop / 0.5)
     const minDays = minWeeks * 7
     const safe = days >= minDays
     return {
       safe,
       minDays,
       maxDays: minDays * 3,
-      warning: safe ? null : `Too aggressive — minimum safe timeline is ${minDays} days (${minWeeks} weeks) for ${bfDiff.toFixed(1)}% BF reduction`,
+      warning: safe ? null : `Too aggressive — minimum safe timeline is ${minDays} days (${minWeeks} weeks) for ${bfDrop.toFixed(1)}% BF reduction`,
       info: `Recommended pace: ~0.5% body fat per week`,
     }
   }
 
-  if (goal === 'leanGain') {
+  // Lean gain (only when actually gaining weight)
+  if (goal === 'leanGain' && isGaining) {
     const gain = targetLbs - currentLbs
-    if (gain <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Set a target weight above your current weight for lean gain' }
-    const monthlyRate = currentLbs * 0.00375
     const minMonths = gain / (currentLbs * 0.005)
     const maxMonths = gain / (currentLbs * 0.0025)
     const minDays = Math.ceil(minMonths * 30.44)
     const maxDays = Math.ceil(maxMonths * 30.44)
-    const actualMonths = days / 30.44
-    const actualPerMonth = gain / actualMonths
     const safe = days >= minDays
     return {
       safe,
@@ -54,25 +55,28 @@ export function checkTimeline(currentLbs: number, targetLbs: number, currentBf: 
     }
   }
 
-  // Fat loss goals
-  const loss = currentLbs - targetLbs
-  if (loss <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Set a target weight below your current weight for fat loss' }
-  const maxPerWeek = currentLbs * 0.01
-  const safePerWeek = currentLbs * 0.0075
-  const minWeeks = Math.ceil(loss / maxPerWeek)
-  const recommendedWeeks = Math.ceil(loss / safePerWeek)
-  const minDays = minWeeks * 7
-  const recommendedDays = recommendedWeeks * 7
-  const weeks = days / 7
-  const actualPerWeek = loss / weeks
-  const safe = days >= minDays
-  return {
-    safe,
-    minDays,
-    maxDays: recommendedDays * 2,
-    warning: safe ? null : `Unsafe — ${actualPerWeek.toFixed(1)} lb/week exceeds 1% of body weight (${maxPerWeek.toFixed(1)} lb/week). Minimum safe timeline: ${minDays} days`,
-    info: `Recommended pace: ${(currentLbs * 0.005).toFixed(1)}–${maxPerWeek.toFixed(1)} lb/week (0.5–1.0% body weight)`,
+  // Fat loss — applies whenever target weight is below current, regardless of goal type
+  if (isLosing) {
+    const loss = currentLbs - targetLbs
+    const maxPerWeek = currentLbs * 0.01
+    const safePerWeek = currentLbs * 0.0075
+    const minWeeks = Math.ceil(loss / maxPerWeek)
+    const recommendedWeeks = Math.ceil(loss / safePerWeek)
+    const minDays = minWeeks * 7
+    const recommendedDays = recommendedWeeks * 7
+    const weeks = days / 7
+    const actualPerWeek = loss / weeks
+    const safe = days >= minDays
+    return {
+      safe,
+      minDays,
+      maxDays: recommendedDays * 2,
+      warning: safe ? null : `Unsafe — ${actualPerWeek.toFixed(1)} lb/week exceeds the safe maximum of ${maxPerWeek.toFixed(1)} lb/week (1% body weight). Minimum safe timeline: ${minDays} days (${minWeeks} weeks)`,
+      info: `Recommended fat loss pace: ${(currentLbs * 0.005).toFixed(1)}–${maxPerWeek.toFixed(1)} lb/week (0.5–1.0% body weight)`,
+    }
   }
+
+  return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Set your target weight and body fat to see a timeline estimate' }
 }
 
 interface OnboardingPanelProps {
