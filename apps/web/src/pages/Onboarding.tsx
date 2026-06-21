@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Activity, ChevronRight, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { NumberInput } from '@/components/ui/number-input'
+import { checkTimeline, getMinBodyFat } from '@/components/onboarding/onboarding-panel'
 import type { UserProfile, ActivityLevel, GoalType, Symptom } from '@/lib/types'
 
 const defaultProfile: UserProfile = {
@@ -81,6 +82,26 @@ export default function Onboarding() {
   async function handleFinish() {
     setSaving(true)
     setError(null)
+
+    const minBf = getMinBodyFat(profile.sex)
+    if (profile.userGoals.targetBodyFatPercent !== null && profile.userGoals.targetBodyFatPercent < minBf) {
+      setError(`Target body fat ${profile.userGoals.targetBodyFatPercent}% is below the safe minimum of ${minBf}% for ${profile.sex === 'male' ? 'men' : 'women'}.`)
+      setSaving(false)
+      return
+    }
+
+    const tw = profile.userGoals.targetWeightLbs ?? profile.weightLbs
+    const tbf = profile.userGoals.targetBodyFatPercent ?? profile.bodyFatPercent
+    const days = profile.userGoals.targetDays ?? 90
+    if (tw !== profile.weightLbs || tbf !== profile.bodyFatPercent) {
+      const check = checkTimeline(profile.weightLbs, tw, profile.bodyFatPercent, tbf, days, profile.goal)
+      if (!check.safe) {
+        setError(`Unsafe timeline: ${check.warning} Please increase the duration to at least ${check.minDays} days.`)
+        setSaving(false)
+        return
+      }
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not signed in')

@@ -5,7 +5,8 @@ import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/compone
 import { Button } from '@/components/ui/button'
 import { OnboardingPanel } from '@/components/onboarding/onboarding-panel'
 import { supabase } from '@/lib/supabase'
-import { AlertCircle, CheckCircle, Camera, ChevronLeft } from 'lucide-react'
+import { AlertCircle, CheckCircle, Camera, ChevronLeft, AlertTriangle } from 'lucide-react'
+import { checkTimeline, getMinBodyFat } from '@/components/onboarding/onboarding-panel'
 import type { UserProfile, ActivityLevel, GoalType, Symptom, ConditionFocus } from '@/lib/types'
 
 const fallbackProfile: UserProfile = {
@@ -111,6 +112,28 @@ export default function Profile() {
     setSaving(true)
     setError(null)
     setSuccess(false)
+
+    // Body fat minimum check
+    const minBf = getMinBodyFat(profile.sex)
+    if (profile.userGoals.targetBodyFatPercent !== null && profile.userGoals.targetBodyFatPercent < minBf) {
+      setError(`Target body fat ${profile.userGoals.targetBodyFatPercent}% is below the safe minimum of ${minBf}% for ${profile.sex === 'male' ? 'men' : 'women'}. Please set a higher target.`)
+      setSaving(false)
+      return
+    }
+
+    // Timeline safety check
+    const tw = profile.userGoals.targetWeightLbs ?? profile.weightLbs
+    const tbf = profile.userGoals.targetBodyFatPercent ?? profile.bodyFatPercent
+    const days = profile.userGoals.targetDays ?? 90
+    if (tw !== profile.weightLbs || tbf !== profile.bodyFatPercent) {
+      const check = checkTimeline(profile.weightLbs, tw, profile.bodyFatPercent, tbf, days, profile.goal)
+      if (!check.safe) {
+        setError(`Unsafe timeline: ${check.warning} Please increase the duration to at least ${check.minDays} days (${Math.round(check.minDays / 7)} weeks).`)
+        setSaving(false)
+        return
+      }
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not signed in')

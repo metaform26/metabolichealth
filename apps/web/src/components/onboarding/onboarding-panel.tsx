@@ -6,11 +6,11 @@ import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import type { UserProfile, ActivityLevel, GoalType, Symptom, ConditionFocus } from '@/lib/types'
 
-function getMinBodyFat(sex: 'male' | 'female') { return sex === 'male' ? 8 : 16 }
+export function getMinBodyFat(sex: 'male' | 'female') { return sex === 'male' ? 8 : 16 }
 function getHealthyRange(sex: 'male' | 'female') { return sex === 'male' ? '10–20%' : '18–28%' }
 function getAthleticRange(sex: 'male' | 'female') { return sex === 'male' ? '10–15%' : '18–23%' }
 
-interface SafetyCheck {
+export interface SafetyCheck {
   safe: boolean
   minDays: number
   maxDays: number
@@ -18,7 +18,7 @@ interface SafetyCheck {
   info: string
 }
 
-function checkTimeline(currentLbs: number, targetLbs: number, currentBf: number, targetBf: number, days: number, goal: GoalType): SafetyCheck {
+export function checkTimeline(currentLbs: number, targetLbs: number, currentBf: number, targetBf: number, days: number, goal: GoalType): SafetyCheck {
   if (goal === 'recomposition') {
     const bfDiff = currentBf - targetBf
     if (bfDiff <= 0) return { safe: true, minDays: 0, maxDays: 365, warning: null, info: 'Body recomposition — weight stays stable while body fat decreases' }
@@ -268,12 +268,7 @@ export function OnboardingPanel({ profile, onChange, onClose }: OnboardingPanelP
             min={7}
             max={730}
             value={profile.userGoals.targetDays ?? 90}
-            onValueChange={(v) => {
-              const tw = profile.userGoals.targetWeightLbs ?? profile.weightLbs
-              const tbf = profile.userGoals.targetBodyFatPercent ?? profile.bodyFatPercent
-              const check = checkTimeline(profile.weightLbs, tw, profile.bodyFatPercent, tbf, v, profile.goal)
-              update('userGoals', { ...profile.userGoals, targetDays: check.safe ? v : Math.max(v, check.minDays) })
-            }}
+            onValueChange={(v) => update('userGoals', { ...profile.userGoals, targetDays: v })}
           />
         </div>
         {profile.userGoals.targetBodyFatPercent !== null && profile.userGoals.targetBodyFatPercent < getMinBodyFat(profile.sex) && (
