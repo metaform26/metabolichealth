@@ -49,6 +49,16 @@ function mapFood(raw: RawFood): FoodResult {
   }
 }
 
+export async function autocomplete(query: string): Promise<string[]> {
+  if (!query.trim()) return []
+  const q = encodeURIComponent(query.trim())
+  const url = `${BASE}/foods/autocomplete?query=${q}&api_key=${API_KEY}&dataType=${encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)')}`
+  const res = await fetch(url)
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.suggestions as string[] | undefined) ?? []
+}
+
 export async function searchFoods(query: string, pageSize = 10): Promise<FoodResult[]> {
   if (!query.trim()) return []
   const q = encodeURIComponent(query.trim())
