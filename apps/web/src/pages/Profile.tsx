@@ -138,27 +138,36 @@ export default function Profile() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not signed in')
 
-      const { error: dbError } = await supabase
+      const payload = {
+        age: profile.age,
+        sex: profile.sex,
+        height_inches: profile.heightInches,
+        weight_lbs: profile.weightLbs,
+        body_fat_percent: profile.bodyFatPercent,
+        waist_inches: profile.waistInches,
+        activity_level: profile.activityLevel,
+        goal: profile.goal,
+        target_weight_lbs: profile.userGoals.targetWeightLbs,
+        target_body_fat_percent: profile.userGoals.targetBodyFatPercent,
+        target_days: profile.userGoals.targetDays,
+        condition_focus: profile.conditionFocus,
+        on_glp1: profile.onGlp1,
+        symptoms: profile.symptoms,
+        conditions: profile.conditions,
+      }
+
+      // Check whether a row already exists for this user
+      const { data: existing } = await supabase
         .from('user_health_profiles')
-        .upsert({
-          user_id: session.user.id,
-          age: profile.age,
-          sex: profile.sex,
-          height_inches: profile.heightInches,
-          weight_lbs: profile.weightLbs,
-          body_fat_percent: profile.bodyFatPercent,
-          waist_inches: profile.waistInches,
-          activity_level: profile.activityLevel,
-          goal: profile.goal,
-          target_weight_lbs: profile.userGoals.targetWeightLbs,
-          target_body_fat_percent: profile.userGoals.targetBodyFatPercent,
-          target_days: profile.userGoals.targetDays,
-          condition_focus: profile.conditionFocus,
-          on_glp1: profile.onGlp1,
-          symptoms: profile.symptoms,
-          conditions: profile.conditions,
-        }, { onConflict: 'user_id' })
-      if (dbError) throw new Error(`${dbError.message ?? 'db error'} [code: ${dbError.code ?? '?'}, details: ${dbError.details ?? '—'}]`)
+        .select('user_id')
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+
+      const { error: dbError } = existing
+        ? await supabase.from('user_health_profiles').update(payload).eq('user_id', session.user.id)
+        : await supabase.from('user_health_profiles').insert({ user_id: session.user.id, ...payload })
+
+      if (dbError) throw new Error(dbError.message ?? JSON.stringify(dbError))
 
       const { error: metaError } = await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: avatarUrl },
