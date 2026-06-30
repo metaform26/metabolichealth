@@ -10,7 +10,8 @@ import { NumberInput } from '@/components/ui/number-input'
 import { Modal } from '@/components/ui/modal'
 import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft, Search, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { searchFoods, type USDAFood } from '@/lib/usda'
+import { searchFoods, type FoodResult } from '@/lib/usda'
+import { searchFatSecret } from '@/lib/fatsecret'
 import { analyzeMealPhoto, type MealAnalysis } from '@/lib/gemini'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -384,9 +385,9 @@ export default function Tracking() {
   const [fat, setFat] = useState('')
   const [fiber, setFiber] = useState('')
 
-  // USDA food search
+  // Food search (USDA + FatSecret combined)
   const [foodQuery, setFoodQuery] = useState('')
-  const [foodResults, setFoodResults] = useState<USDAFood[]>([])
+  const [foodResults, setFoodResults] = useState<FoodResult[]>([])
   const [searching, setSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -398,8 +399,15 @@ export default function Tracking() {
     setSearching(true)
     debounceRef.current = setTimeout(async () => {
       try {
-        const results = await searchFoods(q)
-        setFoodResults(results)
+        const [usdaRes, fsRes] = await Promise.allSettled([
+          searchFoods(q),
+          searchFatSecret(q),
+        ])
+        const usda = usdaRes.status === 'fulfilled' ? usdaRes.value : []
+        const fs   = fsRes.status === 'fulfilled' ? fsRes.value : []
+        const usdaNames = new Set(usda.map((f) => f.description.toLowerCase()))
+        const deduped = fs.filter((f) => !usdaNames.has(f.description.toLowerCase()))
+        setFoodResults([...usda, ...deduped].slice(0, 16))
       } catch {
         setFoodResults([])
       } finally {
@@ -408,12 +416,9 @@ export default function Tracking() {
     }, 400)
   }, [])
 
-  function selectUSDAFood(food: USDAFood) {
+  function selectFood(food: FoodResult) {
     setCustomName(food.description)
-    const servingLabel = food.servingSize && food.servingSizeUnit
-      ? `${food.servingSize} ${food.servingSizeUnit}`
-      : '100 g'
-    setServing(servingLabel)
+    setServing(food.servingDisplay)
     setCalories(String(food.calories))
     setProtein(String(food.protein))
     setCarbs(String(food.carbs))
@@ -777,13 +782,13 @@ export default function Tracking() {
               </Badge>
             </CardHeader>
             <CardContent>
-              {/* USDA food search */}
+              {/* Food search (USDA + FatSecret) */}
               <div ref={searchRef} className="relative mb-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Search USDA foods (e.g. greek yogurt, chicken breast)…"
+                    placeholder="Search foods (e.g. greek yogurt, chicken breast)…"
                     value={foodQuery}
                     onChange={(e) => { setFoodQuery(e.target.value); setShowResults(true); doSearch(e.target.value) }}
                     onFocus={() => { if (foodResults.length > 0) setShowResults(true) }}
@@ -797,13 +802,18 @@ export default function Tracking() {
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
                     {foodResults.map((food) => (
                       <button
-                        key={food.fdcId}
-                        onClick={() => selectUSDAFood(food)}
+                        key={food.id}
+                        onClick={() => selectFood(food)}
                         className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
                       >
-                        <p className="text-sm font-semibold text-slate-800 leading-tight">{food.description}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-slate-800 leading-tight">{food.description}</p>
+                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${food.source === 'fatsecret' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
+                            {food.source === 'fatsecret' ? 'FatSecret' : 'USDA'}
+                          </span>
+                        </div>
                         <p className="text-xs text-slate-400 mt-0.5">
-                          {food.servingSize && food.servingSizeUnit ? `${food.servingSize} ${food.servingSizeUnit}` : '100 g'}
+                          {food.servingDisplay}
                           {' · '}{food.calories} kcal · {food.protein}g protein · {food.carbs}g carbs · {food.fat}g fat
                         </p>
                       </button>
