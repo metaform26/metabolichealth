@@ -49,10 +49,10 @@ function mapFood(raw: RawFood): FoodResult {
   }
 }
 
-export async function searchFoods(query: string, pageSize = 8): Promise<FoodResult[]> {
+export async function searchFoods(query: string, pageSize = 10): Promise<FoodResult[]> {
   if (!query.trim()) return []
   const q = encodeURIComponent(query.trim())
-  const url = `${BASE}/foods/search?query=${q}&api_key=${API_KEY}&pageSize=${pageSize}&dataType=${encodeURIComponent('Survey (FNDDS),SR Legacy')}`
+  const url = `${BASE}/foods/search?query=${q}&api_key=${API_KEY}&pageSize=${pageSize}&dataType=${encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)')}`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`USDA API error: ${res.status}`)
   const data = await res.json()
