@@ -158,12 +158,12 @@ export default function Profile() {
           symptoms: profile.symptoms,
           conditions: profile.conditions,
         }, { onConflict: 'user_id' })
-      if (dbError) throw dbError
+      if (dbError) throw new Error(dbError.message ?? JSON.stringify(dbError))
 
       const { error: metaError } = await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: avatarUrl },
       })
-      if (metaError) throw metaError
+      if (metaError) throw new Error(metaError.message ?? JSON.stringify(metaError))
 
       setSuccess(true)
     } catch (err: unknown) {
