@@ -135,9 +135,12 @@ export default function Profile() {
     }
 
     try {
-      await supabase.auth.refreshSession()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not signed in')
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+      if (refreshError || !refreshData.session) {
+        await supabase.auth.signOut()
+        throw new Error('Your session has expired. You have been signed out — please log back in.')
+      }
+      const session = refreshData.session
 
       const payload = {
         age: profile.age,
