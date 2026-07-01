@@ -168,7 +168,7 @@ export default function Profile() {
         ? await supabase.from('user_health_profiles').update(payload).eq('user_id', session.user.id)
         : await supabase.from('user_health_profiles').insert({ user_id: session.user.id, ...payload })
 
-      if (dbError) throw new Error(`DB: ${dbError.message ?? JSON.stringify(dbError)}`)
+      if (dbError) throw new Error(`DB: ${dbError.message ?? JSON.stringify(dbError)} | uid=${session.user.id} | op=${existing ? 'UPDATE' : 'INSERT'}`)
 
       const { error: metaError } = await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: avatarUrl },
