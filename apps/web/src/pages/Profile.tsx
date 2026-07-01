@@ -135,6 +135,7 @@ export default function Profile() {
     }
 
     try {
+      await supabase.auth.refreshSession()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not signed in')
 
