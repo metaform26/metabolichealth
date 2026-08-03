@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
-  MessageSquare, Play, ShoppingBag, Users, Lock, CheckCircle,
+  MessageSquare, Play, ShoppingBag, Users, CheckCircle,
   ChevronRight, Star, Send, Trash2, Globe, Rss,
 } from 'lucide-react'
 
@@ -14,28 +14,11 @@ import {
 
 const COACHES = [
   {
-    name: 'Dr. Maya Patel', initials: 'MP', role: 'Obesity medicine physician',
+    name: 'Dr. Kaushik Mandal', initials: 'KM', role: 'Obesity medicine physician',
     specialty: 'GLP-1 care, diabetes prevention, metabolic risk review',
     bio: 'Board-certified physician focused on medication safety, metabolic risk reduction, and sustainable obesity care.',
+    email: 'mandal.kash@gmail.com',
     color: 'bg-teal-600',
-  },
-  {
-    name: 'Jordan Lee, RD', initials: 'JL', role: 'Registered dietitian coach',
-    specialty: 'High-protein meal planning, vegetarian options, lactose intolerance',
-    bio: 'Dietitian specializing in practical meal planning, protein targets, and culturally flexible nutrition plans.',
-    color: 'bg-violet-600',
-  },
-  {
-    name: 'Nina Brooks', initials: 'NB', role: 'Health coach',
-    specialty: 'Medication routines, hydration, habit building, accountability',
-    bio: 'Behavior-change coach helping users build daily routines around hydration, symptom tracking, sleep, and adherence.',
-    color: 'bg-rose-500',
-  },
-  {
-    name: 'Carlos Rivera', initials: 'CR', role: 'Exercise coach',
-    specialty: 'Resistance training, walking plans, recovery, progressive overload',
-    bio: 'Strength coach focused on safe beginner resistance training and lean-mass preservation during weight loss.',
-    color: 'bg-amber-500',
   },
 ]
 
@@ -104,14 +87,16 @@ export default function Explore() {
   const [videoCategory, setVideoCategory] = useState('All')
   const [cart, setCart] = useState<CartItem[]>([])
   const [message, setMessage] = useState('')
-  const [messageTo, setMessageTo] = useState('Diet coach')
+  const [messageTo, setMessageTo] = useState('Dr. Kaushik Mandal')
   const [sentMessages, setSentMessages] = useState<{ to: string; text: string }[]>([])
   const [inbox] = useState([
     { from: 'Care Team', subject: 'Welcome', body: 'Your care team inbox will show coach and admin replies here.' },
   ])
   const [checkoutStatus, setCheckoutStatus] = useState('')
 
-  const messagingUnlocked = subscription === 'clinical'
+  const MESSAGE_LIMIT = 3
+  const messagesRemaining = Math.max(0, MESSAGE_LIMIT - sentMessages.length)
+  const messagingUnlocked = messagesRemaining > 0
   const filteredVideos = videoCategory === 'All' ? VIDEOS : VIDEOS.filter((v) => v.category === videoCategory)
   const cartTotal = cart.reduce((s, i) => s + i.price, 0)
 
@@ -232,6 +217,7 @@ export default function Explore() {
                       <p className="font-semibold text-slate-800 text-sm">{c.name}</p>
                       <p className="text-xs font-semibold text-teal-600">{c.role}</p>
                       <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{c.specialty}</p>
+                      <a href={`mailto:${c.email}`} className="text-xs text-slate-400 hover:text-teal-600 transition-colors">{c.email}</a>
                     </div>
                   </div>
                 ))}
@@ -245,8 +231,10 @@ export default function Explore() {
                 <CardEyebrow>Secure messaging</CardEyebrow>
                 <CardTitle>Message Care Team</CardTitle>
               </div>
-              <Badge variant={messagingUnlocked ? 'green' : 'slate'}>
-                {messagingUnlocked ? 'Unlocked' : <><Lock className="w-3 h-3 inline mr-1" />Locked</>}
+              <Badge variant="slate" className={messagesRemaining > 0 ? 'text-amber-500' : 'text-red-600'}>
+                {messagesRemaining > 0
+                  ? <><Star className="w-3 h-3 inline mr-1 fill-amber-500 text-amber-500" />{messagesRemaining} remaining messages</>
+                  : '0 remaining messages'}
               </Badge>
             </CardHeader>
             <CardContent>
@@ -256,7 +244,7 @@ export default function Explore() {
                   <select value={messageTo} onChange={(e) => setMessageTo(e.target.value)}
                     disabled={!messagingUnlocked}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50">
-                    {['Diet coach', 'Health coach', 'Exercise coach', 'Affiliated physician'].map((r) => (
+                    {['Dr. Kaushik Mandal'].map((r) => (
                       <option key={r}>{r}</option>
                     ))}
                   </select>
@@ -265,14 +253,14 @@ export default function Explore() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-400 block mb-1.5">Message</label>
                   <textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)}
                     disabled={!messagingUnlocked}
-                    placeholder={messagingUnlocked ? `Message your ${messageTo.toLowerCase()}…` : 'Upgrade to Clinical Plus to message the care team.'}
+                    placeholder={messagingUnlocked ? `Message ${messageTo}…` : "You've used all 3 messages to the care team."}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:opacity-50" />
                 </div>
                 <Button onClick={sendMessage} disabled={!messagingUnlocked || !message.trim()} size="sm" className="gap-2">
                   <Send className="w-3.5 h-3.5" /> Send message
                 </Button>
                 {!messagingUnlocked && (
-                  <p className="text-xs text-slate-400">Upgrade to <strong>Clinical Plus</strong> to message the care team.</p>
+                  <p className="text-xs text-slate-400">You've reached your limit of <strong>3 messages</strong> to the care team.</p>
                 )}
                 {sentMessages.length > 0 && (
                   <div className="mt-2 space-y-2">
