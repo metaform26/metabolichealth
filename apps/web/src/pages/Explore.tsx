@@ -74,14 +74,12 @@ const SUBSCRIPTIONS = [
     features: ['Full progress tracking', 'Diet chart & meal plans', 'Workout checklist', 'Education video library'],
   },
   {
-    key: 'coach', name: 'Coach Connect', monthlyPrice: 49, yearlyPrice: 499,
-    description: 'Restricted messaging with affiliated diet coaches and health coaches.',
-    features: ['Everything in Basic', 'Diet coach messaging', 'Health coach messaging', 'Exercise coach messaging'],
-  },
-  {
-    key: 'clinical', name: 'Clinical Plus', monthlyPrice: 99, yearlyPrice: 999,
+    key: 'clinical', name: 'Clinical Plus', monthlyPrice: 10, yearlyPrice: 102,
     description: 'Coach messaging plus physician/clinician messaging access when available.',
-    features: ['Everything in Coach Connect', 'Physician messaging', 'Clinical review access', 'Priority care team response'],
+    features: [
+      'Everything in Basic', 'Diet coach messaging', 'Health coach messaging', 'Exercise coach messaging',
+      'Physician messaging', 'Clinical review access', 'Priority care team response',
+    ],
   },
 ]
 
@@ -101,7 +99,7 @@ interface CartItem { id: string; name: string; tag: string; price: number }
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Explore() {
-  const [subscription, setSubscription] = useState<'basic' | 'coach' | 'clinical'>('basic')
+  const [subscription, setSubscription] = useState<'basic' | 'clinical'>('basic')
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
   const [videoCategory, setVideoCategory] = useState('All')
   const [cart, setCart] = useState<CartItem[]>([])
@@ -113,7 +111,7 @@ export default function Explore() {
   ])
   const [checkoutStatus, setCheckoutStatus] = useState('')
 
-  const messagingUnlocked = subscription === 'coach' || subscription === 'clinical'
+  const messagingUnlocked = subscription === 'clinical'
   const filteredVideos = videoCategory === 'All' ? VIDEOS : VIDEOS.filter((v) => v.category === videoCategory)
   const cartTotal = cart.reduce((s, i) => s + i.price, 0)
 
@@ -155,7 +153,7 @@ export default function Explore() {
             </h2>
           </div>
           <Badge className="bg-white/20 text-white border-white/30 shrink-0">
-            {subscription === 'basic' ? 'Basic access' : subscription === 'coach' ? 'Coach Connect' : 'Clinical Plus'}
+            {subscription === 'basic' ? 'Basic access' : 'Clinical Plus'}
           </Badge>
         </div>
 
@@ -267,14 +265,14 @@ export default function Explore() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-400 block mb-1.5">Message</label>
                   <textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)}
                     disabled={!messagingUnlocked}
-                    placeholder={messagingUnlocked ? `Message your ${messageTo.toLowerCase()}…` : 'Upgrade to Coach Connect or Clinical Plus to message the care team.'}
+                    placeholder={messagingUnlocked ? `Message your ${messageTo.toLowerCase()}…` : 'Upgrade to Clinical Plus to message the care team.'}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:opacity-50" />
                 </div>
                 <Button onClick={sendMessage} disabled={!messagingUnlocked || !message.trim()} size="sm" className="gap-2">
                   <Send className="w-3.5 h-3.5" /> Send message
                 </Button>
                 {!messagingUnlocked && (
-                  <p className="text-xs text-slate-400">Upgrade to <strong>Coach Connect</strong> or <strong>Clinical Plus</strong> to message the care team.</p>
+                  <p className="text-xs text-slate-400">Upgrade to <strong>Clinical Plus</strong> to message the care team.</p>
                 )}
                 {sentMessages.length > 0 && (
                   <div className="mt-2 space-y-2">
