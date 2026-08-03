@@ -1,5 +1,6 @@
 import { Bell, Settings, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { FullscriptConnectButton } from '@/components/fullscript-connect-button'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -49,6 +50,7 @@ export function Topbar({ title, eyebrow, actions }: TopbarProps) {
       </div>
       <div className="flex items-center gap-2">
         {actions}
+        <FullscriptConnectButton />
         <Button variant="ghost" size="sm" className="w-9 h-9 p-0 rounded-xl">
           <Bell className="w-4 h-4" />
         </Button>

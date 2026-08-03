@@ -120,6 +120,32 @@ export interface Database {
         Insert: Omit<Database['public']['Tables']['subscriptions']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['subscriptions']['Insert']>
       }
+      fullscript_connections: {
+        Row: {
+          id: string
+          user_id: string
+          access_token: string
+          refresh_token: string
+          token_type: string
+          scope: string | null
+          resource_owner_id: string | null
+          resource_owner_type: string | null
+          expires_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<
+          Database['public']['Tables']['fullscript_connections']['Row'],
+          'id' | 'created_at' | 'updated_at'
+        >
+        Update: Partial<Database['public']['Tables']['fullscript_connections']['Insert']>
+      }
+    }
+    Functions: {
+      fullscript_connection_status: {
+        Args: Record<string, never>
+        Returns: { connected: boolean; connected_at: string }[]
+      }
     }
   }
 }
