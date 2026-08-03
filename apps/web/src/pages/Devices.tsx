@@ -4,6 +4,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
+import { PageLock } from '@/components/page-lock'
 
 interface Integration {
   id: string
@@ -67,6 +68,19 @@ const EMPTY_METRICS = {
 }
 
 export default function Devices() {
+  return (
+    <PageLock
+      password="Kaushik@14"
+      storageKey="devices-page-unlock"
+      title="Devices page locked"
+      description="This page is still being worked on. Enter the password to preview it."
+    >
+      <DevicesContent />
+    </PageLock>
+  )
+}
+
+function DevicesContent() {
   const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS)
 
   const connectedCount = integrations.filter((i) => i.connected).length
