@@ -10,9 +10,23 @@ export function FullscriptConnectButton() {
 
   useEffect(() => {
     let cancelled = false
-    supabase.rpc('fullscript_connection_status').then(({ data }) => {
-      if (!cancelled) setConnected(Array.isArray(data) && (data as unknown[]).length > 0)
-    })
+    async function checkStatus() {
+      try {
+        const { data, error } = await supabase.rpc('fullscript_connection_status')
+        if (cancelled) return
+        if (error) {
+          console.error('[fullscript] connection_status RPC failed:', error)
+          setConnected(false)
+          return
+        }
+        setConnected(Array.isArray(data) && (data as unknown[]).length > 0)
+      } catch (err) {
+        if (cancelled) return
+        console.error('[fullscript] connection_status RPC threw:', err)
+        setConnected(false)
+      }
+    }
+    checkStatus()
     return () => { cancelled = true }
   }, [])
 
