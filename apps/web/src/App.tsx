@@ -14,7 +14,6 @@ import Progress from '@/pages/Progress'
 import Explore from '@/pages/Explore'
 import Devices from '@/pages/Devices'
 import Admin from '@/pages/Admin'
-import FullscriptCallback from '@/pages/FullscriptCallback'
 
 function ProtectedLayout() {
   const navigate = useNavigate()
@@ -72,7 +71,6 @@ export default function App() {
           <Route path="/explore" element={<Explore />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="/admin" element={<Admin />} />
-          <Route path="/integrations/fullscript/callback" element={<FullscriptCallback />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
