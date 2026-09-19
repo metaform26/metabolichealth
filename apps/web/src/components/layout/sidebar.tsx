@@ -6,6 +6,7 @@ import {
   TrendingUp,
   Watch,
   Compass,
+  BookOpen,
   ShieldCheck,
   LogOut,
   Activity,
@@ -21,6 +22,7 @@ const navItems = [
   { href: '/progress', label: 'Progress', icon: TrendingUp },
   { href: '/devices', label: 'Devices', icon: Watch },
   { href: '/explore', label: 'Explore', icon: Compass },
+  { href: '/overview', label: 'App Overview', icon: BookOpen },
 ]
 
 const adminItems = [

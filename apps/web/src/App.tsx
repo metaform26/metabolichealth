@@ -14,6 +14,7 @@ import Progress from '@/pages/Progress'
 import Explore from '@/pages/Explore'
 import Devices from '@/pages/Devices'
 import Admin from '@/pages/Admin'
+import AppOverview from '@/pages/AppOverview'
 
 function ProtectedLayout() {
   const navigate = useNavigate()
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/explore" element={<Explore />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/overview" element={<AppOverview />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

@@ -5,6 +5,7 @@ import {
   TrendingUp,
   Watch,
   Compass,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -14,6 +15,7 @@ const navItems = [
   { href: '/progress', label: 'Progress', icon: TrendingUp },
   { href: '/devices', label: 'Devices', icon: Watch },
   { href: '/explore', label: 'Explore', icon: Compass },
+  { href: '/overview', label: 'Overview', icon: BookOpen },
 ]
 
 export function MobileNav() {
