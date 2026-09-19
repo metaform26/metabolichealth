@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { PageLock } from '@/components/page-lock'
 
