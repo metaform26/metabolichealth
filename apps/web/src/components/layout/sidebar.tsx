@@ -17,12 +17,12 @@ import { supabase } from '@/lib/supabase'
 const ADMIN_EMAILS = ['dipanbaral05@gmail.com', 'mandal.kash@gmail.com', 'admin.metaform@gmail.com']
 
 const navItems = [
+  { href: '/overview', label: 'App Overview', icon: BookOpen },
   { href: '/dashboard', label: 'Goals', icon: LayoutDashboard },
   { href: '/tracking', label: 'Daily Tracking', icon: UtensilsCrossed },
   { href: '/progress', label: 'Progress', icon: TrendingUp },
   { href: '/devices', label: 'Devices', icon: Watch },
   { href: '/explore', label: 'Explore', icon: Compass },
-  { href: '/overview', label: 'App Overview', icon: BookOpen },
 ]
 
 const adminItems = [
