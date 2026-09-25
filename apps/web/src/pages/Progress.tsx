@@ -348,7 +348,7 @@ export default function Progress() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
-              <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input label="Date" type="date" value={date} max={today} onChange={(e) => { if (e.target.value <= today) setDate(e.target.value) }} />
               <Input label="Weight" type="number" step="0.1" min={0} suffix="lb"
                 placeholder={String(STARTING_WEIGHT)} value={weight} onChange={(e) => setWeight(e.target.value)} />
               <Input label="Waist" type="number" step="0.1" min={0} suffix="in"
