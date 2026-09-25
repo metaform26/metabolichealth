@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
-import { Camera, Scale, History, ChevronLeft, AlertTriangle } from 'lucide-react'
+import { Camera, Scale, History, ChevronLeft, AlertTriangle, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -253,6 +253,11 @@ export default function Progress() {
   const [targetBodyFat, setTargetBodyFat] = useState('')
   const [uploadOpen, setUploadOpen] = useState(false)
   const [staged, setStaged] = useState<Record<PhotoAngle, string | null>>({ front: null, back: null, side: null })
+  const [checkInsOpen, setCheckInsOpen] = useState(false)
+  const [editingLog, setEditingLog] = useState<CheckIn | null>(null)
+  const [editWeight, setEditWeight] = useState('')
+  const [editWaist, setEditWaist] = useState('')
+  const [editBodyFat, setEditBodyFat] = useState('')
   const [photoHistoryOpen, setPhotoHistoryOpen] = useState(false)
   const [selectedPhotoDate, setSelectedPhotoDate] = useState<string | null>(null)
   const photoHistory = useMemo(() => (photoHistoryOpen ? loadPhotoHistory() : []), [photoHistoryOpen])
@@ -344,11 +349,21 @@ export default function Progress() {
               <CardEyebrow>Progress check-in</CardEyebrow>
               <CardTitle>Log Today's Measurements</CardTitle>
             </div>
-            <Badge variant="slate">{logs.length} check-in{logs.length !== 1 ? 's' : ''}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="slate">{logs.length} check-in{logs.length !== 1 ? 's' : ''}</Badge>
+              {logs.length > 0 && (
+                <button
+                  onClick={() => setCheckInsOpen(true)}
+                  className="text-xs font-semibold text-teal-700 hover:text-teal-900 transition-colors"
+                >
+                  View all
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
-              <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input label="Date" type="date" value={date} max={today} onChange={(e) => { if (e.target.value <= today) setDate(e.target.value) }} />
               <Input label="Weight" type="number" step="0.1" min={0} suffix="lb"
                 placeholder={String(STARTING_WEIGHT)} value={weight} onChange={(e) => setWeight(e.target.value)} />
               <Input label="Waist" type="number" step="0.1" min={0} suffix="in"
@@ -360,17 +375,6 @@ export default function Progress() {
               <Button onClick={saveCheckIn} className="h-[42px]">Save check-in</Button>
             </div>
 
-            {logs.length > 0 && (
-              <div className="mt-4 space-y-2">
-                {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((log) => (
-                  <CheckInRow
-                    key={log.date}
-                    log={log}
-                    onDelete={() => setLogs((prev) => prev.filter((l) => l.date !== log.date))}
-                  />
-                ))}
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -507,6 +511,70 @@ export default function Progress() {
         </Card>
 
       </main>
+
+      <Modal open={checkInsOpen} onClose={() => { setCheckInsOpen(false); setEditingLog(null) }} title="All Check-Ins">
+        {editingLog ? (
+          <div className="space-y-4">
+            <button
+              onClick={() => setEditingLog(null)}
+              className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-900"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </button>
+            <p className="text-sm font-bold text-slate-800">
+              {new Date(editingLog.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <Input label="Weight" type="number" step="0.1" min={0} suffix="lb" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} />
+              <Input label="Waist" type="number" step="0.1" min={0} suffix="in" value={editWaist} onChange={(e) => setEditWaist(e.target.value)} />
+              <Input label="Body Fat" type="number" step="0.1" min={0} suffix="%" value={editBodyFat} onChange={(e) => setEditBodyFat(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="secondary" size="sm" onClick={() => setEditingLog(null)}>Cancel</Button>
+              <Button size="sm" onClick={() => {
+                setLogs((prev) => prev.map((l) => l.date === editingLog.date ? {
+                  ...l,
+                  weight: parseFloat(editWeight) || l.weight,
+                  waist: parseFloat(editWaist) || l.waist,
+                  bodyFat: parseFloat(editBodyFat) || l.bodyFat,
+                } : l))
+                setEditingLog(null)
+              }}>
+                Save changes
+              </Button>
+            </div>
+          </div>
+        ) : logs.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-8">No check-ins yet</p>
+        ) : (
+          <div className="space-y-2">
+            {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((log) => {
+              const formatted = new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              return (
+                <div key={log.date} className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-3 items-center border border-slate-100 rounded-xl px-4 py-3 bg-white text-sm">
+                  <span className="font-semibold text-slate-700">{formatted}</span>
+                  <span className="text-slate-500">{log.weight} lb</span>
+                  <span className="text-slate-500">{log.waist} in</span>
+                  <span className="text-slate-500">{log.bodyFat}% fat</span>
+                  <button
+                    onClick={() => { setEditingLog(log); setEditWeight(String(log.weight)); setEditWaist(String(log.waist)); setEditBodyFat(String(log.bodyFat)) }}
+                    className="text-slate-400 hover:text-teal-600 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setLogs((prev) => prev.filter((l) => l.date !== log.date))}
+                    className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Modal>
 
       <Modal open={photoHistoryOpen} onClose={closePhotoHistory} title="Photo History">
         {selectedPhotoEntry ? (
