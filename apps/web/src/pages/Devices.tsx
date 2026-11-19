@@ -4,7 +4,8 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
-import { PageLock } from '@/components/page-lock'
+import { Watch } from 'lucide-react'
+import { useIsAdmin } from '@/lib/use-is-admin'
 
 interface Integration {
   id: string
@@ -67,17 +68,40 @@ const EMPTY_METRICS = {
   glucose: '—',
 }
 
+// The Devices page is still being built, so only admins can preview it.
+// (It used to be behind a password written into the page code, which anyone
+// could read in the JavaScript bundle.)
 export default function Devices() {
-  return (
-    <PageLock
-      password="Kaushik@14"
-      storageKey="devices-page-unlock"
-      title="Devices page locked"
-      description="This page is still being worked on. Enter the password to preview it."
-    >
-      <DevicesContent />
-    </PageLock>
-  )
+  const isAdmin = useIsAdmin()
+
+  if (isAdmin === null) {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <Topbar eyebrow="API & Device Integration" title="Connected Devices" />
+        <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50">
+              <Watch className="h-5 w-5 text-teal-700" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-900">Devices are coming soon</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Connecting wearables and smart scales is still being built. Check back soon.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return <DevicesContent />
 }
 
 function DevicesContent() {

@@ -1,5 +1,4 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -13,8 +12,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-
-const ADMIN_EMAILS = ['dipanbaral05@gmail.com', 'mandal.kash@gmail.com', 'admin.metaform@gmail.com']
+import { useIsAdmin } from '@/lib/use-is-admin'
 
 const navItems = [
   { href: '/overview', label: 'App Overview', icon: BookOpen },
@@ -32,13 +30,7 @@ const adminItems = [
 export function Sidebar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const [isAdmin, setIsAdmin] = useState(false)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAdmin(ADMIN_EMAILS.includes(session?.user?.email ?? ''))
-    })
-  }, [])
+  const isAdmin = useIsAdmin() === true
 
   async function handleLogout() {
     await supabase.auth.signOut()
