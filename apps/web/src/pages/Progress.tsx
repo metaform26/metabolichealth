@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/stat-card'
@@ -9,10 +9,13 @@ import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { Camera, Scale, History, ChevronLeft, AlertTriangle, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import type { Database } from '@/lib/database.types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CheckIn {
+  id: string
   date: string
   weight: number
   waist: number
@@ -33,19 +36,16 @@ type PhotoAngle = (typeof PHOTO_ANGLES)[number]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function seedLogs(weight: number, waist: number, bodyFat: number): CheckIn[] {
-  const today = new Date()
-  return [8, 4, 0].map((weeksAgo) => {
-    const d = new Date(today)
-    d.setDate(today.getDate() - weeksAgo * 7)
-    const f = weeksAgo / 4
-    return {
-      date: d.toISOString().slice(0, 10),
-      weight: Math.round((weight + f * 9) * 10) / 10,
-      waist: Math.round((waist + f * 2.8) * 10) / 10,
-      bodyFat: Math.round((bodyFat + f * 3.6) * 10) / 10,
-    }
-  })
+type CheckInDbRow = Database['public']['Tables']['progress_check_ins']['Row']
+
+function rowToCheckIn(row: CheckInDbRow): CheckIn {
+  return {
+    id: row.id,
+    date: row.date,
+    weight: Number(row.weight_lbs ?? 0),
+    waist: Number(row.waist_inches ?? 0),
+    bodyFat: Number(row.body_fat_percent ?? 0),
+  }
 }
 
 function bmiClass(bmi: number) {
@@ -240,11 +240,33 @@ const STARTING_WAIST = 42
 const STARTING_BODY_FAT = 42
 
 export default function Progress() {
-  const [logs, setLogs] = useState<CheckIn[]>(() =>
-    seedLogs(STARTING_WEIGHT, STARTING_WAIST, STARTING_BODY_FAT)
-  )
+  const [logs, setLogs] = useState<CheckIn[]>([])
+  const [logsLoading, setLogsLoading] = useState(true)
+  const [logsError, setLogsError] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  const today = new Date().toISOString().slice(0, 10)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { if (!cancelled) setLogsLoading(false); return }
+      const { data, error } = await supabase
+        .from('progress_check_ins')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('date', { ascending: true })
+      if (cancelled) return
+      if (error) setLogsError(`Couldn't load check-ins: ${error.message}`)
+      else setLogs((data ?? []).map(rowToCheckIn))
+      setLogsLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  // Local calendar date — toISOString() would give the UTC date, which is
+  // already "tomorrow" in the evening for US time zones.
+  const today = todayDateString()
   const [date, setDate] = useState(today)
   const [weight, setWeight] = useState('')
   const [waist, setWaist] = useState('')
@@ -314,14 +336,72 @@ export default function Progress() {
   const leanMass = latest.weight * (1 - latest.bodyFat / 100)
   const weightDelta = first ? latest.weight - first.weight : 0
 
-  function saveCheckIn() {
-    const w = parseFloat(weight) || STARTING_WEIGHT
-    const wt = parseFloat(waist) || STARTING_WAIST
-    const bf = parseFloat(bodyFat) || STARTING_BODY_FAT
-    setLogs((prev) => prev.filter((l) => l.date !== date).concat({ date, weight: w, waist: wt, bodyFat: bf }))
-    setWeight('')
-    setWaist('')
-    setBodyFat('')
+  const canSave = !saving && date <= today &&
+    parseFloat(weight) > 0 && parseFloat(waist) > 0 && parseFloat(bodyFat) > 0
+
+  async function saveCheckIn() {
+    if (!canSave) return
+    setSaving(true)
+    setLogsError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('You are signed out — please sign in again.')
+      const values = {
+        weight_lbs: parseFloat(weight),
+        waist_inches: parseFloat(waist),
+        body_fat_percent: parseFloat(bodyFat),
+      }
+      // One check-in per day: update the existing row for this date if there is one.
+      const existing = logs.find((l) => l.date === date)
+      const { data, error } = existing
+        ? await supabase.from('progress_check_ins').update(values).eq('id', existing.id).select().single()
+        : await supabase.from('progress_check_ins').insert({ user_id: session.user.id, date, ...values }).select().single()
+      if (error) throw new Error(error.message)
+      const saved = rowToCheckIn(data)
+      setLogs((prev) => prev.filter((l) => l.id !== saved.id).concat(saved))
+      setWeight('')
+      setWaist('')
+      setBodyFat('')
+    } catch (err) {
+      setLogsError(`Couldn't save check-in: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function updateCheckIn(log: CheckIn) {
+    setLogsError('')
+    const { data, error } = await supabase
+      .from('progress_check_ins')
+      .update({
+        weight_lbs: parseFloat(editWeight) || log.weight,
+        waist_inches: parseFloat(editWaist) || log.waist,
+        body_fat_percent: parseFloat(editBodyFat) || log.bodyFat,
+      })
+      .eq('id', log.id)
+      .select()
+      .single()
+    if (error) { setLogsError(`Couldn't update check-in: ${error.message}`); return }
+    const saved = rowToCheckIn(data)
+    setLogs((prev) => prev.map((l) => (l.id === saved.id ? saved : l)))
+    setEditingLog(null)
+  }
+
+  async function deleteCheckIn(log: CheckIn) {
+    setLogsError('')
+    // Ask for the deleted rows back: when RLS blocks a delete, Postgres deletes
+    // zero rows and returns no error, so an empty result means it didn't happen.
+    const { data, error } = await supabase
+      .from('progress_check_ins')
+      .delete()
+      .eq('id', log.id)
+      .select('id')
+    if (error) { setLogsError(`Couldn't delete check-in: ${error.message}`); return }
+    if (!data?.length) {
+      setLogsError("Couldn't delete check-in: the database didn't allow it (no delete permission for this row).")
+      return
+    }
+    setLogs((prev) => prev.filter((l) => l.id !== log.id))
   }
 
   return (
@@ -372,8 +452,16 @@ export default function Progress() {
                 placeholder={String(STARTING_BODY_FAT)} value={bodyFat} onChange={(e) => setBodyFat(e.target.value)} />
               <Input label="Target Weight" type="number" step="0.1" min={0} suffix="lb"
                 placeholder="Goal" value={targetWeight} onChange={(e) => setTargetWeight(e.target.value)} />
-              <Button onClick={saveCheckIn} className="h-[42px]">Save check-in</Button>
+              <Button onClick={saveCheckIn} disabled={!canSave} className="h-[42px]">
+                {saving ? 'Saving…' : 'Save check-in'}
+              </Button>
             </div>
+            {logsError && (
+              <div className="flex gap-2 p-3 mt-3 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-xs">{logsError}</p>
+              </div>
+            )}
 
           </CardContent>
         </Card>
@@ -389,12 +477,14 @@ export default function Progress() {
               <Badge variant="slate">Logged over time</Badge>
             </CardHeader>
             <CardContent>
-              <ProgressChart
+              {logsLoading ? (
+                <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading check-ins…</div>
+              ) : <ProgressChart
                 logs={logs}
                 heightInches={HEIGHT_INCHES}
                 targetWeight={targetWeight ? parseFloat(targetWeight) : null}
                 targetBodyFat={targetBodyFat ? parseFloat(targetBodyFat) : null}
-              />
+              />}
             </CardContent>
           </Card>
 
@@ -513,6 +603,9 @@ export default function Progress() {
       </main>
 
       <Modal open={checkInsOpen} onClose={() => { setCheckInsOpen(false); setEditingLog(null) }} title="All Check-Ins">
+        {logsError && (
+          <p className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">{logsError}</p>
+        )}
         {editingLog ? (
           <div className="space-y-4">
             <button
@@ -532,15 +625,7 @@ export default function Progress() {
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="secondary" size="sm" onClick={() => setEditingLog(null)}>Cancel</Button>
-              <Button size="sm" onClick={() => {
-                setLogs((prev) => prev.map((l) => l.date === editingLog.date ? {
-                  ...l,
-                  weight: parseFloat(editWeight) || l.weight,
-                  waist: parseFloat(editWaist) || l.waist,
-                  bodyFat: parseFloat(editBodyFat) || l.bodyFat,
-                } : l))
-                setEditingLog(null)
-              }}>
+              <Button size="sm" onClick={() => updateCheckIn(editingLog)}>
                 Save changes
               </Button>
             </div>
@@ -552,7 +637,7 @@ export default function Progress() {
             {[...logs].sort((a, b) => b.date.localeCompare(a.date)).map((log) => {
               const formatted = new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
               return (
-                <div key={log.date} className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-3 items-center border border-slate-100 rounded-xl px-4 py-3 bg-white text-sm">
+                <div key={log.id} className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-3 items-center border border-slate-100 rounded-xl px-4 py-3 bg-white text-sm">
                   <span className="font-semibold text-slate-700">{formatted}</span>
                   <span className="text-slate-500">{log.weight} lb</span>
                   <span className="text-slate-500">{log.waist} in</span>
@@ -564,7 +649,7 @@ export default function Progress() {
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={() => setLogs((prev) => prev.filter((l) => l.date !== log.date))}
+                    onClick={() => deleteCheckIn(log)}
                     className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none font-bold"
                   >
                     ×
