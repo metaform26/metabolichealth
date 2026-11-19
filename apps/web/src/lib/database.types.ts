@@ -18,6 +18,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>
+        Relationships: []
       }
       user_health_profiles: {
         Row: {
@@ -42,6 +43,7 @@ export interface Database {
           'id' | 'created_at' | 'updated_at'
         >
         Update: Partial<Database['public']['Tables']['user_health_profiles']['Insert']>
+        Relationships: []
       }
       meal_logs: {
         Row: {
@@ -60,6 +62,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['meal_logs']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['meal_logs']['Insert']>
+        Relationships: []
       }
       daily_tracking: {
         Row: {
@@ -77,21 +80,26 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['daily_tracking']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['daily_tracking']['Insert']>
+        Relationships: []
       }
       progress_check_ins: {
         Row: {
           id: string
           user_id: string
-          checked_at: string
+          date: string
           weight_lbs: number | null
           waist_inches: number | null
           body_fat_percent: number | null
-          target_weight_lbs: number | null
-          target_body_fat: number | null
+          target_weight: number | null
           notes: string | null
+          created_at: string
         }
-        Insert: Omit<Database['public']['Tables']['progress_check_ins']['Row'], 'id'>
+        Insert: Omit<Database['public']['Tables']['progress_check_ins']['Row'], 'id' | 'created_at' | 'target_weight' | 'notes'> & {
+          target_weight?: number | null
+          notes?: string | null
+        }
         Update: Partial<Database['public']['Tables']['progress_check_ins']['Insert']>
+        Relationships: []
       }
       messages: {
         Row: {
@@ -105,6 +113,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['messages']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['messages']['Insert']>
+        Relationships: []
       }
       subscriptions: {
         Row: {
@@ -119,7 +128,10 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['subscriptions']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['subscriptions']['Insert']>
+        Relationships: []
       }
     }
+    Views: Record<string, never>
+    Functions: Record<string, never>
   }
 }
