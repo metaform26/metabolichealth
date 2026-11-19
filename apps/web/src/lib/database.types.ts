@@ -1,6 +1,11 @@
 export type UserRole = 'patient' | 'clinician' | 'coach' | 'admin'
 
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+type UserHealthProfileOptionalColumn =
+  | 'target_weight_lbs' | 'target_body_fat_percent' | 'target_days' | 'condition_focus'
+  | 'baseline_weight_lbs' | 'baseline_body_fat_percent' | 'baseline_waist_inches'
+  | 'baseline_bmi' | 'baseline_lean_mass_lbs' | 'baseline_date'
+
+export type Json =string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export interface Database {
   public: {
@@ -35,13 +40,25 @@ export interface Database {
           on_glp1: boolean
           symptoms: string[]
           conditions: string[]
+          // Columns added in the live database outside the migrations
+          // (written by Onboarding/Profile).
+          target_weight_lbs: number | null
+          target_body_fat_percent: number | null
+          target_days: number | null
+          condition_focus: string[] | null
+          baseline_weight_lbs: number | null
+          baseline_body_fat_percent: number | null
+          baseline_waist_inches: number | null
+          baseline_bmi: number | null
+          baseline_lean_mass_lbs: number | null
+          baseline_date: string | null
           created_at: string
           updated_at: string
         }
         Insert: Omit<
           Database['public']['Tables']['user_health_profiles']['Row'],
-          'id' | 'created_at' | 'updated_at'
-        >
+          'id' | 'created_at' | 'updated_at' | UserHealthProfileOptionalColumn
+        > & Partial<Pick<Database['public']['Tables']['user_health_profiles']['Row'], UserHealthProfileOptionalColumn>>
         Update: Partial<Database['public']['Tables']['user_health_profiles']['Insert']>
         Relationships: []
       }
