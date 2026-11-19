@@ -129,7 +129,7 @@ function ProgressChart({
   targetBodyFat,
 }: {
   logs: CheckIn[]
-  heightInches: number
+  heightInches: number | null
   targetWeight: number | null
   targetBodyFat: number | null
 }) {
@@ -146,8 +146,9 @@ function ProgressChart({
   const H = 220
   const PAD = 32
 
-  const bmis = sorted.map((l) => (l.weight / (heightInches * heightInches)) * 703)
-  const allValues = sorted.flatMap((l, i) => [l.weight, l.waist, l.bodyFat, bmis[i]])
+  // BMI needs a height; without one the BMI line is left out.
+  const bmis = heightInches ? sorted.map((l) => (l.weight / (heightInches * heightInches)) * 703) : null
+  const allValues = sorted.flatMap((l, i) => [l.weight, l.waist, l.bodyFat, ...(bmis ? [bmis[i]] : [])])
   if (targetWeight) allValues.push(targetWeight)
   if (targetBodyFat) allValues.push(targetBodyFat)
 
@@ -163,7 +164,7 @@ function ProgressChart({
     { key: 'weight', values: sorted.map((l) => l.weight), color: '#0d9488' },
     { key: 'waist',  values: sorted.map((l) => l.waist),  color: '#d97706' },
     { key: 'fat',    values: sorted.map((l) => l.bodyFat), color: '#e11d48' },
-    { key: 'bmi',    values: bmis,                          color: '#7c3aed' },
+    ...(bmis ? [{ key: 'bmi', values: bmis, color: '#7c3aed' }] : []),
   ]
 
   return (
@@ -200,7 +201,7 @@ function ProgressChart({
           { color: '#0d9488', label: 'Weight' },
           { color: '#d97706', label: 'Waist' },
           { color: '#e11d48', label: 'Body Fat' },
-          { color: '#7c3aed', label: 'BMI' },
+          ...(bmis ? [{ color: '#7c3aed', label: 'BMI' }] : []),
         ].map(({ color, label }) => (
           <span key={label} className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: color }} />
@@ -234,13 +235,23 @@ function CheckInRow({ log, onDelete }: { log: CheckIn; onDelete: () => void }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-const HEIGHT_INCHES = 66
-const STARTING_WEIGHT = 214
-const STARTING_WAIST = 42
-const STARTING_BODY_FAT = 42
+// Measurements and goals from the user's health profile (set during onboarding
+// and on the Profile page). Any of these can be missing.
+interface ProfileStats {
+  heightInches: number | null
+  weight: number | null
+  waist: number | null
+  bodyFat: number | null
+  baselineWeight: number | null
+  targetWeight: number | null
+  targetBodyFat: number | null
+}
+
+const numOrNull = (v: number | null | undefined) => (v == null || Number.isNaN(Number(v)) ? null : Number(v))
 
 export default function Progress() {
   const [logs, setLogs] = useState<CheckIn[]>([])
+  const [profile, setProfile] = useState<ProfileStats | null>(null)
   const [logsLoading, setLogsLoading] = useState(true)
   const [logsError, setLogsError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -250,14 +261,35 @@ export default function Progress() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { if (!cancelled) setLogsLoading(false); return }
-      const { data, error } = await supabase
-        .from('progress_check_ins')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('date', { ascending: true })
+      const [checkIns, health] = await Promise.all([
+        supabase
+          .from('progress_check_ins')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('date', { ascending: true }),
+        supabase
+          .from('user_health_profiles')
+          .select('height_inches, weight_lbs, waist_inches, body_fat_percent, baseline_weight_lbs, target_weight_lbs, target_body_fat_percent')
+          .eq('user_id', session.user.id)
+          .maybeSingle(),
+      ])
       if (cancelled) return
-      if (error) setLogsError(`Couldn't load check-ins: ${error.message}`)
-      else setLogs((data ?? []).map(rowToCheckIn))
+      if (checkIns.error) setLogsError(`Couldn't load check-ins: ${checkIns.error.message}`)
+      else setLogs((checkIns.data ?? []).map(rowToCheckIn))
+      const h = health.data
+      if (h) {
+        const stats: ProfileStats = {
+          heightInches: numOrNull(h.height_inches),
+          weight: numOrNull(h.weight_lbs),
+          waist: numOrNull(h.waist_inches),
+          bodyFat: numOrNull(h.body_fat_percent),
+          baselineWeight: numOrNull(h.baseline_weight_lbs),
+          targetWeight: numOrNull(h.target_weight_lbs),
+          targetBodyFat: numOrNull(h.target_body_fat_percent),
+        }
+        setProfile(stats)
+        if (stats.targetWeight != null) setTargetWeight(String(stats.targetWeight))
+      }
       setLogsLoading(false)
     }
     load()
@@ -272,7 +304,6 @@ export default function Progress() {
   const [waist, setWaist] = useState('')
   const [bodyFat, setBodyFat] = useState('')
   const [targetWeight, setTargetWeight] = useState('')
-  const [targetBodyFat, setTargetBodyFat] = useState('')
   const [uploadOpen, setUploadOpen] = useState(false)
   const [staged, setStaged] = useState<Record<PhotoAngle, string | null>>({ front: null, back: null, side: null })
   const [checkInsOpen, setCheckInsOpen] = useState(false)
@@ -328,13 +359,20 @@ export default function Progress() {
     () => [...logs].sort((a, b) => a.date.localeCompare(b.date)),
     [logs]
   )
-  const latest = sorted[sorted.length - 1] ?? {
-    weight: STARTING_WEIGHT, waist: STARTING_WAIST, bodyFat: STARTING_BODY_FAT,
+  // Latest numbers: newest check-in, otherwise what the user entered in their profile.
+  const lastLog = sorted[sorted.length - 1]
+  const latest = {
+    weight: lastLog?.weight ?? profile?.weight ?? null,
+    waist: lastLog?.waist ?? profile?.waist ?? null,
+    bodyFat: lastLog?.bodyFat ?? profile?.bodyFat ?? null,
   }
-  const first = sorted[0]
-  const bmi = (latest.weight / (HEIGHT_INCHES * HEIGHT_INCHES)) * 703
-  const leanMass = latest.weight * (1 - latest.bodyFat / 100)
-  const weightDelta = first ? latest.weight - first.weight : 0
+  const heightInches = profile?.heightInches ?? null
+  const bmi = latest.weight != null && heightInches ? (latest.weight / (heightInches * heightInches)) * 703 : null
+  const leanMass = latest.weight != null && latest.bodyFat != null ? latest.weight * (1 - latest.bodyFat / 100) : null
+  // "Start" is the onboarding baseline when we have it, else the first check-in.
+  const startWeight = profile?.baselineWeight ?? sorted[0]?.weight ?? null
+  const weightDelta = lastLog && startWeight != null ? lastLog.weight - startWeight : null
+  const targetBodyFat = profile?.targetBodyFat ?? null
 
   const canSave = !saving && date <= today &&
     parseFloat(weight) > 0 && parseFloat(waist) > 0 && parseFloat(bodyFat) > 0
@@ -362,6 +400,21 @@ export default function Progress() {
       setWeight('')
       setWaist('')
       setBodyFat('')
+
+      // The target weight is the same goal shown on Dashboard and Profile,
+      // so a change here is saved to the health profile.
+      const newTarget = parseFloat(targetWeight)
+      if (profile && newTarget > 0 && newTarget !== profile.targetWeight) {
+        const { data: updated, error: targetError } = await supabase
+          .from('user_health_profiles')
+          .update({ target_weight_lbs: newTarget })
+          .eq('user_id', session.user.id)
+          .select('target_weight_lbs')
+        if (targetError || !updated?.length) {
+          throw new Error(`check-in saved, but the target weight wasn't: ${targetError?.message ?? 'no permission to update the profile'}`)
+        }
+        setProfile((p) => (p ? { ...p, targetWeight: newTarget } : p))
+      }
     } catch (err) {
       setLogsError(`Couldn't save check-in: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -414,12 +467,29 @@ export default function Progress() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard
             label="Weight"
-            value={`${latest.weight} lb`}
-            sub={weightDelta !== 0 ? `${weightDelta > 0 ? '+' : ''}${weightDelta.toFixed(1)} lb since start` : 'Starting weight'}
+            value={latest.weight != null ? `${latest.weight} lb` : '—'}
+            sub={
+              weightDelta == null ? (latest.weight != null ? 'From your profile' : 'No check-ins yet')
+              : weightDelta === 0 ? 'Starting weight'
+              : `${weightDelta > 0 ? '+' : ''}${weightDelta.toFixed(1)} lb since start`
+            }
           />
-          <StatCard label="Waist" value={`${latest.waist} in`} sub="Latest check-in" />
-          <StatCard label="BMI" value={bmi.toFixed(1)} sub={bmiClass(bmi)} />
-          <StatCard label="Body Fat" value={`${latest.bodyFat}%`} sub={`${leanMass.toFixed(1)} lb lean mass`} accent />
+          <StatCard
+            label="Waist"
+            value={latest.waist != null ? `${latest.waist} in` : '—'}
+            sub={lastLog ? 'Latest check-in' : latest.waist != null ? 'From your profile' : 'No check-ins yet'}
+          />
+          <StatCard
+            label="BMI"
+            value={bmi != null ? bmi.toFixed(1) : '—'}
+            sub={bmi != null ? bmiClass(bmi) : heightInches ? 'Log your weight' : 'Add your height in Profile'}
+          />
+          <StatCard
+            label="Body Fat"
+            value={latest.bodyFat != null ? `${latest.bodyFat}%` : '—'}
+            sub={leanMass != null ? `${leanMass.toFixed(1)} lb lean mass` : 'No check-ins yet'}
+            accent
+          />
         </div>
 
         {/* Log check-in */}
@@ -445,11 +515,11 @@ export default function Progress() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
               <Input label="Date" type="date" value={date} max={today} onChange={(e) => { if (e.target.value <= today) setDate(e.target.value) }} />
               <Input label="Weight" type="number" step="0.1" min={0} suffix="lb"
-                placeholder={String(STARTING_WEIGHT)} value={weight} onChange={(e) => setWeight(e.target.value)} />
+                placeholder={latest.weight != null ? String(latest.weight) : ''} value={weight} onChange={(e) => setWeight(e.target.value)} />
               <Input label="Waist" type="number" step="0.1" min={0} suffix="in"
-                placeholder={String(STARTING_WAIST)} value={waist} onChange={(e) => setWaist(e.target.value)} />
+                placeholder={latest.waist != null ? String(latest.waist) : ''} value={waist} onChange={(e) => setWaist(e.target.value)} />
               <Input label="Body Fat" type="number" step="0.1" min={0} suffix="%"
-                placeholder={String(STARTING_BODY_FAT)} value={bodyFat} onChange={(e) => setBodyFat(e.target.value)} />
+                placeholder={latest.bodyFat != null ? String(latest.bodyFat) : ''} value={bodyFat} onChange={(e) => setBodyFat(e.target.value)} />
               <Input label="Target Weight" type="number" step="0.1" min={0} suffix="lb"
                 placeholder="Goal" value={targetWeight} onChange={(e) => setTargetWeight(e.target.value)} />
               <Button onClick={saveCheckIn} disabled={!canSave} className="h-[42px]">
@@ -481,9 +551,9 @@ export default function Progress() {
                 <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading check-ins…</div>
               ) : <ProgressChart
                 logs={logs}
-                heightInches={HEIGHT_INCHES}
+                heightInches={heightInches}
                 targetWeight={targetWeight ? parseFloat(targetWeight) : null}
-                targetBodyFat={targetBodyFat ? parseFloat(targetBodyFat) : null}
+                targetBodyFat={targetBodyFat}
               />}
             </CardContent>
           </Card>
