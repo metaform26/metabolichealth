@@ -10,7 +10,7 @@ import { NumberInput } from '@/components/ui/number-input'
 import { Modal } from '@/components/ui/modal'
 import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft, Search, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { searchFoods, autocomplete, type FoodResult } from '@/lib/usda'
+import { searchFoods, type FoodResult } from '@/lib/usda'
 import { searchOpenFoodFacts } from '@/lib/openfoodfacts'
 import { analyzeMealPhoto, type MealAnalysis } from '@/lib/gemini'
 
@@ -399,15 +399,13 @@ export default function Tracking() {
     setSearching(true)
     debounceRef.current = setTimeout(async () => {
       try {
-        // Autocomplete and Open Food Facts run in parallel; autocomplete expands
-        // partial tokens ("chi" → "chicken") so USDA text search finds results.
-        const [autoRes, offRes] = await Promise.allSettled([
-          autocomplete(q),
+        // USDA (generic foods) and Open Food Facts (branded foods) run in
+        // parallel; if one fails, the other's results still show.
+        const [usdaRes, offRes] = await Promise.allSettled([
+          searchFoods(q),
           searchOpenFoodFacts(q),
         ])
-        const suggestions = autoRes.status === 'fulfilled' ? autoRes.value : []
-        const usdaQuery = suggestions[0] ?? q
-        const [usdaRes] = await Promise.allSettled([searchFoods(usdaQuery)])
+        if (usdaRes.status === 'rejected') console.warn('USDA search failed:', usdaRes.reason)
         const usda = usdaRes.status === 'fulfilled' ? usdaRes.value : []
         const off  = offRes.status === 'fulfilled' ? offRes.value : []
         const usdaNames = new Set(usda.map((f) => f.description.toLowerCase()))

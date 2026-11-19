@@ -49,22 +49,26 @@ function mapFood(raw: RawFood): FoodResult {
   }
 }
 
-export async function autocomplete(query: string): Promise<string[]> {
-  if (!query.trim()) return []
-  const q = encodeURIComponent(query.trim())
-  const url = `${BASE}/foods/autocomplete?query=${q}&api_key=${API_KEY}&dataType=${encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)')}`
-  const res = await fetch(url)
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.suggestions as string[] | undefined) ?? []
+const DATA_TYPES = ['Foundation', 'SR Legacy', 'Survey (FNDDS)']
+
+// Lets "chi" match "chicken": USDA search only matches whole words unless the
+// last word ends in a wildcard. (USDA has no autocomplete endpoint.)
+function withPrefixMatch(query: string): string {
+  const q = query.trim()
+  const last = q.split(/\s+/).pop() ?? ''
+  return /^[\p{L}\p{N}]{2,}$/u.test(last) ? `${q}*` : q
 }
 
+// Sent as a POST with a JSON body: as a GET, USDA intermittently rejects the
+// comma-separated dataType list with a 400 (the "Survey (FNDDS)" entry).
 export async function searchFoods(query: string, pageSize = 10): Promise<FoodResult[]> {
   if (!query.trim()) return []
-  const q = encodeURIComponent(query.trim())
-  const url = `${BASE}/foods/search?query=${q}&api_key=${API_KEY}&pageSize=${pageSize}&dataType=${encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)')}`
-  const res = await fetch(url)
+  const res = await fetch(`${BASE}/foods/search?api_key=${API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: withPrefixMatch(query), pageSize, dataType: DATA_TYPES }),
+  })
   if (!res.ok) throw new Error(`USDA API error: ${res.status}`)
   const data = await res.json()
-  return (data.foods as RawFood[]).map(mapFood)
+  return ((data.foods as RawFood[] | undefined) ?? []).map(mapFood)
 }
