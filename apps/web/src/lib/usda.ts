@@ -61,14 +61,38 @@ function withPrefixMatch(query: string): string {
 
 // Sent as a POST with a JSON body: as a GET, USDA intermittently rejects the
 // comma-separated dataType list with a 400 (the "Survey (FNDDS)" entry).
-export async function searchFoods(query: string, pageSize = 10): Promise<FoodResult[]> {
-  if (!query.trim()) return []
+async function postSearch(query: string, pageSize: number): Promise<FoodResult[]> {
   const res = await fetch(`${BASE}/foods/search?api_key=${API_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: withPrefixMatch(query), pageSize, dataType: DATA_TYPES }),
+    body: JSON.stringify({ query, pageSize, dataType: DATA_TYPES }),
   })
   if (!res.ok) throw new Error(`USDA API error: ${res.status}`)
   const data = await res.json()
   return ((data.foods as RawFood[] | undefined) ?? []).map(mapFood)
+}
+
+// Runs the exact search and a prefix search ("chi" -> "chi*") together.
+// Exact matches come first so finished words rank well ("apple" isn't
+// buried under "Applebee's"); prefix matches fill in while the user is still
+// typing a word.
+export async function searchFoods(query: string, pageSize = 10): Promise<FoodResult[]> {
+  const q = query.trim()
+  if (!q) return []
+  const prefixQuery = withPrefixMatch(q)
+  if (prefixQuery === q) return postSearch(q, pageSize)
+
+  const [exact, prefix] = await Promise.allSettled([postSearch(q, pageSize), postSearch(prefixQuery, pageSize)])
+  if (exact.status === 'rejected' && prefix.status === 'rejected') throw exact.reason
+  const seen = new Set<string>()
+  const merged: FoodResult[] = []
+  for (const list of [exact, prefix]) {
+    if (list.status !== 'fulfilled') continue
+    for (const food of list.value) {
+      if (seen.has(food.id)) continue
+      seen.add(food.id)
+      merged.push(food)
+    }
+  }
+  return merged.slice(0, pageSize)
 }
