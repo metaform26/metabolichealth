@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/modal'
 import { Camera, Pencil, Trash2, Dumbbell, CheckSquare, History, ChevronLeft, Search, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { searchFoods, autocomplete, type FoodResult } from '@/lib/usda'
-import { searchFatSecret } from '@/lib/fatsecret'
+import { searchOpenFoodFacts } from '@/lib/openfoodfacts'
 import { analyzeMealPhoto, type MealAnalysis } from '@/lib/gemini'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -385,7 +385,7 @@ export default function Tracking() {
   const [fat, setFat] = useState('')
   const [fiber, setFiber] = useState('')
 
-  // Food search (USDA + FatSecret combined)
+  // Food search (USDA + Open Food Facts combined)
   const [foodQuery, setFoodQuery] = useState('')
   const [foodResults, setFoodResults] = useState<FoodResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -399,19 +399,19 @@ export default function Tracking() {
     setSearching(true)
     debounceRef.current = setTimeout(async () => {
       try {
-        // Autocomplete and FatSecret run in parallel; autocomplete expands
+        // Autocomplete and Open Food Facts run in parallel; autocomplete expands
         // partial tokens ("chi" → "chicken") so USDA text search finds results.
-        const [autoRes, fsRes] = await Promise.allSettled([
+        const [autoRes, offRes] = await Promise.allSettled([
           autocomplete(q),
-          searchFatSecret(q),
+          searchOpenFoodFacts(q),
         ])
         const suggestions = autoRes.status === 'fulfilled' ? autoRes.value : []
         const usdaQuery = suggestions[0] ?? q
         const [usdaRes] = await Promise.allSettled([searchFoods(usdaQuery)])
         const usda = usdaRes.status === 'fulfilled' ? usdaRes.value : []
-        const fs   = fsRes.status === 'fulfilled' ? fsRes.value : []
+        const off  = offRes.status === 'fulfilled' ? offRes.value : []
         const usdaNames = new Set(usda.map((f) => f.description.toLowerCase()))
-        const deduped = fs.filter((f) => !usdaNames.has(f.description.toLowerCase()))
+        const deduped = off.filter((f) => !usdaNames.has(f.description.toLowerCase()))
         setFoodResults([...usda, ...deduped].slice(0, 16))
       } catch {
         setFoodResults([])
@@ -787,7 +787,7 @@ export default function Tracking() {
               </Badge>
             </CardHeader>
             <CardContent>
-              {/* Food search (USDA + FatSecret) */}
+              {/* Food search (USDA + Open Food Facts) */}
               <div ref={searchRef} className="relative mb-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -813,11 +813,12 @@ export default function Tracking() {
                       >
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-semibold text-slate-800 leading-tight">{food.description}</p>
-                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${food.source === 'fatsecret' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
-                            {food.source === 'fatsecret' ? 'FatSecret' : 'USDA'}
+                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${food.source === 'openfoodfacts' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
+                            {food.source === 'openfoodfacts' ? 'Open Food Facts' : 'USDA'}
                           </span>
                         </div>
                         <p className="text-xs text-slate-400 mt-0.5">
+                          {food.brandName && `${food.brandName} · `}
                           {food.servingDisplay}
                           {' · '}{food.calories} kcal · {food.protein}g protein · {food.carbs}g carbs · {food.fat}g fat
                         </p>

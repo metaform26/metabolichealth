@@ -11,7 +11,7 @@ export interface FoodResult {
   carbs: number
   fat: number
   fiber: number
-  source: 'usda' | 'fatsecret'
+  source: 'usda' | 'openfoodfacts'
 }
 
 interface RawNutrient {
