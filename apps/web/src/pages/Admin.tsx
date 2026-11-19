@@ -1,14 +1,13 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trash2, Plus, Send, ShieldCheck, UserPlus } from 'lucide-react'
+import { useIsAdmin } from '@/lib/use-is-admin'
+import { Trash2, Plus, Send, ShieldCheck } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardHeader, CardTitle, CardEyebrow, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { supabase } from '@/lib/supabase'
-
-const ADMIN_EMAILS = ['dipanbaral05@gmail.com', 'mandal.kash@gmail.com', 'admin.metaform@gmail.com']
 
 const DEMO_PATIENTS = [
   { name: 'Ava Morgan', age: 46, compliance: 92, reports: 6, subscription: 'clinical', conditions: 'Prediabetes, Hypertension', glp1: true },
@@ -55,25 +54,24 @@ const INITIAL_SHOP: AdminShopItem[] = [
 ]
 
 // ─── Admin access panel ───────────────────────────────────────────────────────
+// Lists the accounts the database treats as admins (profiles.role = 'admin').
+// Roles can only be changed in Supabase, never from the app, so a signed-in
+// user can't promote themselves.
 function AdminAccessPanel() {
-  const OWNERS = ADMIN_EMAILS
-  const [admins, setAdmins] = useState<string[]>(OWNERS)
-  const [newEmail, setNewEmail] = useState('')
-  const [added, setAdded] = useState(false)
+  const [admins, setAdmins] = useState<{ user_id: string; full_name: string | null }[] | null>(null)
+  const [error, setError] = useState('')
 
-  function handleAdd() {
-    const email = newEmail.trim().toLowerCase()
-    if (!email || admins.includes(email)) return
-    setAdmins((prev) => [...prev, email])
-    setNewEmail('')
-    setAdded(true)
-    setTimeout(() => setAdded(false), 2000)
-  }
-
-  function handleRemove(email: string) {
-    if (OWNERS.includes(email)) return // can't remove owners
-    setAdmins((prev) => prev.filter((e) => e !== email))
-  }
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('user_id, full_name')
+      .eq('role', 'admin')
+      .order('full_name')
+      .then(({ data, error }) => {
+        if (error) setError(error.message)
+        else setAdmins(data ?? [])
+      })
+  }, [])
 
   return (
     <Card>
@@ -82,61 +80,40 @@ function AdminAccessPanel() {
           <CardEyebrow>Access control</CardEyebrow>
           <CardTitle>Admin Access</CardTitle>
         </div>
-        <Badge variant="teal">{admins.length} admin{admins.length !== 1 ? 's' : ''}</Badge>
+        {admins && (
+          <Badge variant="teal">{admins.length} admin{admins.length !== 1 ? 's' : ''}</Badge>
+        )}
       </CardHeader>
       <CardContent>
         <p className="text-xs text-slate-500 mb-4">
-          Only email addresses listed here can access the Admin dashboard. Owner accounts are permanent and cannot be removed.
-          Adding an email here grants access — the user must sign up with that exact email.
+          These accounts have the admin role in the database. Admins can open this page and read every
+          user's profile.
         </p>
 
-        {/* Current admins */}
-        <div className="space-y-2 mb-4">
-          {admins.map((email) => (
-            <div
-              key={email}
-              className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50"
-            >
-              <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-4 h-4 text-teal-700" />
+        {error ? (
+          <p className="text-xs text-red-600">Couldn't load admins: {error}</p>
+        ) : !admins ? (
+          <p className="text-xs text-slate-400">Loading…</p>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {admins.map((a) => (
+              <div
+                key={a.user_id}
+                className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50"
+              >
+                <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-4 h-4 text-teal-700" />
+                </div>
+                <p className="flex-1 text-sm text-slate-900 font-medium truncate">{a.full_name || 'Unnamed account'}</p>
+                <Badge variant="teal">Admin</Badge>
               </div>
-              <p className="flex-1 text-sm text-slate-900 font-medium truncate">{email}</p>
-              {OWNERS.includes(email) ? (
-                <Badge variant="teal">Owner</Badge>
-              ) : (
-                <button
-                  onClick={() => handleRemove(email)}
-                  className="shrink-0 text-slate-400 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* Add new admin */}
-        <div className="flex gap-2">
-          <input
-            type="email"
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            placeholder="Add admin by email address"
-            className="flex-1 text-sm border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent placeholder:text-slate-300"
-          />
-          <button
-            onClick={handleAdd}
-            disabled={!newEmail.trim()}
-            className="bg-teal-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-teal-800 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-          >
-            <UserPlus className="w-4 h-4" />
-            {added ? 'Added ✓' : 'Add'}
-          </button>
-        </div>
-
-        <p className="text-xs text-slate-400 mt-3">
-          ℹ️ In production, this list is stored securely in Supabase and checked server-side on every request via middleware.
+        <p className="text-xs text-slate-400">
+          To add or remove an admin, set that user's <code>role</code> to <code>admin</code> or{' '}
+          <code>patient</code> in Supabase → Table Editor → profiles. Roles can't be changed from the app.
         </p>
       </CardContent>
     </Card>
@@ -147,14 +124,13 @@ function AdminAccessPanel() {
 export default function Admin() {
   const navigate = useNavigate()
 
+  const isAdmin = useIsAdmin()
+
+  // Non-admins are sent back to the dashboard. The admin role comes from the
+  // database (is_admin()), and RLS enforces it for any real data on this page.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const email = session?.user?.email ?? ''
-      if (!ADMIN_EMAILS.includes(email)) {
-        navigate('/dashboard', { replace: true })
-      }
-    })
-  }, [navigate])
+    if (isAdmin === false) navigate('/dashboard', { replace: true })
+  }, [isAdmin, navigate])
 
   const [messages, setMessages] = useState<AdminMessage[]>(INITIAL_MESSAGES)
   const [replyTo, setReplyTo] = useState<string | null>(null)
@@ -207,6 +183,14 @@ export default function Admin() {
     if (!newShop.title) return
     setShopItems((prev) => [{ title: newShop.title || 'New Item', description: newShop.description || 'New resource.', status: newShop.status || 'Coming soon' }, ...prev])
     setNewShop({ title: '', description: '', status: '' })
+  }
+
+  if (isAdmin !== true) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="w-8 h-8 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   return (
