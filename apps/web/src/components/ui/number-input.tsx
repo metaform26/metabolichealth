@@ -21,7 +21,7 @@ export interface NumberInputProps
  * 0 on blur.
  */
 export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
-  ({ value, onValueChange, onChange, onBlur, ...props }, ref) => {
+  ({ value, onValueChange, onBlur, ...props }, ref) => {
     const [raw, setRaw] = React.useState(String(value))
 
     React.useEffect(() => {
@@ -36,7 +36,6 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
         onChange={(e) => {
           const next = e.target.value
           setRaw(next)
-          onChange?.(e)
           if (next === '' || next === '-') return
           const parsed = Number(next)
           if (!Number.isNaN(parsed)) onValueChange(parsed)
