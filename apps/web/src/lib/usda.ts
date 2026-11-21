@@ -11,7 +11,7 @@ export interface FoodResult {
   carbs: number
   fat: number
   fiber: number
-  source: 'usda' | 'fatsecret'
+  source: 'usda' | 'openfoodfacts'
 }
 
 interface RawNutrient {
@@ -49,22 +49,50 @@ function mapFood(raw: RawFood): FoodResult {
   }
 }
 
-export async function autocomplete(query: string): Promise<string[]> {
-  if (!query.trim()) return []
-  const q = encodeURIComponent(query.trim())
-  const url = `${BASE}/foods/autocomplete?query=${q}&api_key=${API_KEY}&dataType=${encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)')}`
-  const res = await fetch(url)
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.suggestions as string[] | undefined) ?? []
+const DATA_TYPES = ['Foundation', 'SR Legacy', 'Survey (FNDDS)']
+
+// Lets "chi" match "chicken": USDA search only matches whole words unless the
+// last word ends in a wildcard. (USDA has no autocomplete endpoint.)
+function withPrefixMatch(query: string): string {
+  const q = query.trim()
+  const last = q.split(/\s+/).pop() ?? ''
+  return /^[\p{L}\p{N}]{2,}$/u.test(last) ? `${q}*` : q
 }
 
-export async function searchFoods(query: string, pageSize = 10): Promise<FoodResult[]> {
-  if (!query.trim()) return []
-  const q = encodeURIComponent(query.trim())
-  const url = `${BASE}/foods/search?query=${q}&api_key=${API_KEY}&pageSize=${pageSize}&dataType=${encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)')}`
-  const res = await fetch(url)
+// Sent as a POST with a JSON body: as a GET, USDA intermittently rejects the
+// comma-separated dataType list with a 400 (the "Survey (FNDDS)" entry).
+async function postSearch(query: string, pageSize: number): Promise<FoodResult[]> {
+  const res = await fetch(`${BASE}/foods/search?api_key=${API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, pageSize, dataType: DATA_TYPES }),
+  })
   if (!res.ok) throw new Error(`USDA API error: ${res.status}`)
   const data = await res.json()
-  return (data.foods as RawFood[]).map(mapFood)
+  return ((data.foods as RawFood[] | undefined) ?? []).map(mapFood)
+}
+
+// Runs the exact search and a prefix search ("chi" -> "chi*") together.
+// Exact matches come first so finished words rank well ("apple" isn't
+// buried under "Applebee's"); prefix matches fill in while the user is still
+// typing a word.
+export async function searchFoods(query: string, pageSize = 10): Promise<FoodResult[]> {
+  const q = query.trim()
+  if (!q) return []
+  const prefixQuery = withPrefixMatch(q)
+  if (prefixQuery === q) return postSearch(q, pageSize)
+
+  const [exact, prefix] = await Promise.allSettled([postSearch(q, pageSize), postSearch(prefixQuery, pageSize)])
+  if (exact.status === 'rejected' && prefix.status === 'rejected') throw exact.reason
+  const seen = new Set<string>()
+  const merged: FoodResult[] = []
+  for (const list of [exact, prefix]) {
+    if (list.status !== 'fulfilled') continue
+    for (const food of list.value) {
+      if (seen.has(food.id)) continue
+      seen.add(food.id)
+      merged.push(food)
+    }
+  }
+  return merged.slice(0, pageSize)
 }
