@@ -13,6 +13,11 @@ import { cn } from '@/lib/utils'
 import { searchFoods, type FoodResult } from '@/lib/usda'
 import { searchOpenFoodFacts } from '@/lib/openfoodfacts'
 import { analyzeMealPhoto, type MealAnalysis } from '@/lib/gemini'
+import {
+  type MealLog, type HistoryEntry,
+  localDateString, loadDay, loadHistory, saveTotals,
+  insertMeal, updateMeal, deleteMeal, importBrowserData,
+} from '@/lib/tracking-store'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -120,118 +125,8 @@ const WORKOUT_PLANS: Record<string, string[]> = {
   maintenance:    ['Strength training', 'Zone 2 cardio', 'Walk 30 min', 'Strength training', 'Zone 2 cardio', 'Rest'],
 }
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
-interface MealLog {
-  id: string
-  type: string
-  meal: string
-  serving: string
-  calories: number
-  protein: number
-  carbs: number | null
-  fat: number | null
-  fiber: number | null
-  photo?: string
-  loggedAt?: number
-}
-
-interface DailyTotals {
-  calories: number
-  protein: number
-  steps: number
-  water: number
-}
-
-const EMPTY_DAILY_TOTALS: DailyTotals = { calories: 0, protein: 0, steps: 0, water: 0 }
-
-const DAILY_TOTALS_PREFIX = 'daily-tracking-'
-const DAILY_MEALS_PREFIX = 'daily-meals-'
-
-interface HistoryEntry {
-  date: string // YYYY-MM-DD
-  totals: DailyTotals
-  meals: MealLog[]
-}
-
-// Keyed by local date, so a new day always starts back at 0. Manual entries
-// and future device-sync updates (e.g. Apple Health step counts) both just
-// write to this same per-day record. Every past day's record naturally
-// becomes a history entry once a new day's key takes over as "today".
-function todayDateString(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function todayKey(): string {
-  return `${DAILY_TOTALS_PREFIX}${todayDateString()}`
-}
-
-function todayMealsKey(): string {
-  return `${DAILY_MEALS_PREFIX}${todayDateString()}`
-}
-
-function loadDailyTotals(): DailyTotals {
-  try {
-    const raw = localStorage.getItem(todayKey())
-    if (raw) return { ...EMPTY_DAILY_TOTALS, ...JSON.parse(raw) }
-  } catch {
-    // localStorage unavailable or value corrupted — fall back to a fresh day
-  }
-  return EMPTY_DAILY_TOTALS
-}
-
-function loadDailyMeals(): MealLog[] {
-  try {
-    const raw = localStorage.getItem(todayMealsKey())
-    if (raw) return JSON.parse(raw)
-  } catch {
-    // localStorage unavailable or value corrupted — fall back to a fresh day
-  }
-  return []
-}
-
-function dateFromKey(key: string | null, prefix: string): string | null {
-  if (!key?.startsWith(prefix)) return null
-  const date = key.slice(prefix.length)
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
-}
-
-function loadHistoryEntries(): HistoryEntry[] {
-  const dates = new Set<string>()
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      const date = dateFromKey(key, DAILY_TOTALS_PREFIX) ?? dateFromKey(key, DAILY_MEALS_PREFIX)
-      if (date) dates.add(date)
-    }
-  } catch {
-    // localStorage unavailable
-  }
-
-  const entries: HistoryEntry[] = []
-  for (const date of dates) {
-    let totals = EMPTY_DAILY_TOTALS
-    let meals: MealLog[] = []
-    try {
-      const rawTotals = localStorage.getItem(`${DAILY_TOTALS_PREFIX}${date}`)
-      if (rawTotals) totals = { ...EMPTY_DAILY_TOTALS, ...JSON.parse(rawTotals) }
-    } catch {
-      // skip corrupted entry
-    }
-    try {
-      const rawMeals = localStorage.getItem(`${DAILY_MEALS_PREFIX}${date}`)
-      if (rawMeals) meals = JSON.parse(rawMeals)
-    } catch {
-      // skip corrupted entry
-    }
-    entries.push({ date, totals, meals })
-  }
-  return entries.sort((a, b) => b.date.localeCompare(a.date))
-}
-
 // Downscales an uploaded photo before storing it, so a handful of meal
-// photos don't quickly blow through localStorage's ~5MB quota.
+// photos don't blow through this browser's ~5MB storage quota.
 function resizeImageToDataUrl(file: File, maxDim = 640, quality = 0.75): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -263,7 +158,7 @@ function formatLogTime(timestamp?: number): string | null {
 function formatHistoryDate(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number)
   const label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-  return dateStr === todayDateString() ? `Today · ${label}` : label
+  return dateStr === localDateString() ? `Today · ${label}` : label
 }
 
 // ─── Adherence Ring ────────────────────────────────────────────────────────────
@@ -348,23 +243,25 @@ function MealLogRow({ log, onEdit, onDelete }: { log: MealLog; onEdit?: () => vo
 const TARGETS = { calories: 1498, protein: 149, steps: 8000, waterOz: 80 }
 
 export default function Tracking() {
-  // Today's totals — reset to 0 each new day, persisted in localStorage for the rest of the day
-  const [calorieLogged, setCalorieLogged] = useState(() => loadDailyTotals().calories)
-  const [proteinLogged, setProteinLogged] = useState(() => loadDailyTotals().protein)
-  const [stepsLogged, setStepsLogged] = useState(() => loadDailyTotals().steps)
-  const [waterLogged, setWaterLogged] = useState(() => loadDailyTotals().water)
+  // Everything on this page is saved to the user's account (see tracking-store).
+  // `today` is fixed when the page opens, so a new day starts fresh on reload.
+  const [today] = useState(() => localDateString())
+  const [loading, setLoading] = useState(true)
+  const [dataError, setDataError] = useState('')
+  const [importNotice, setImportNotice] = useState('')
 
-  useEffect(() => {
-    localStorage.setItem(
-      todayKey(),
-      JSON.stringify({ calories: calorieLogged, protein: proteinLogged, steps: stepsLogged, water: waterLogged })
-    )
-  }, [calorieLogged, proteinLogged, stepsLogged, waterLogged])
+  // Today's totals
+  const [calorieLogged, setCalorieLogged] = useState(0)
+  const [proteinLogged, setProteinLogged] = useState(0)
+  const [stepsLogged, setStepsLogged] = useState(0)
+  const [waterLogged, setWaterLogged] = useState(0)
+  const totalsLoaded = useRef(false)
 
   // History modal
   const [historyOpen, setHistoryOpen] = useState(false)
   const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null)
-  const historyEntries = useMemo(() => (historyOpen ? loadHistoryEntries() : []), [historyOpen])
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const selectedHistoryEntry = historyEntries.find((e) => e.date === selectedHistoryDate)
 
   function closeHistory() {
@@ -372,8 +269,9 @@ export default function Tracking() {
     setSelectedHistoryDate(null)
   }
 
-  // Meal log — persisted per day, alongside the daily totals above
-  const [mealLogs, setMealLogs] = useState<MealLog[]>(() => loadDailyMeals())
+  // Meal log for today
+  const [mealLogs, setMealLogs] = useState<MealLog[]>([])
+  const [savingMeal, setSavingMeal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [mealType, setMealType] = useState('Breakfast')
   const [mealPreset, setMealPreset] = useState('0')
@@ -443,13 +341,59 @@ export default function Tracking() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Load today's data. Anything this browser saved before Daily Tracking used
+  // the database is imported into the account first (once).
   useEffect(() => {
-    try {
-      localStorage.setItem(todayMealsKey(), JSON.stringify(mealLogs))
-    } catch {
-      // localStorage quota exceeded (e.g. too many photos) — skip persisting this update
+    let cancelled = false
+    async function load() {
+      try {
+        const imported = await importBrowserData().catch((err) => {
+          console.warn('Importing browser data failed; will retry next visit:', err)
+          return 0
+        })
+        if (imported > 0 && !cancelled) {
+          setImportNotice(`Moved ${imported} day${imported === 1 ? '' : 's'} of tracking saved in this browser into your account.`)
+        }
+        const { totals, meals } = await loadDay(today)
+        if (cancelled) return
+        setCalorieLogged(totals.calories)
+        setProteinLogged(totals.protein)
+        setStepsLogged(totals.steps)
+        setWaterLogged(totals.water)
+        setMealLogs(meals)
+        totalsLoaded.current = true
+      } catch (err) {
+        if (!cancelled) setDataError(`Couldn't load your tracking: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }, [mealLogs])
+    load()
+    return () => { cancelled = true }
+  }, [today])
+
+  // Save today's totals shortly after the sliders/inputs stop changing.
+  useEffect(() => {
+    if (!totalsLoaded.current) return
+    const timer = setTimeout(() => {
+      saveTotals(today, { calories: calorieLogged, protein: proteinLogged, steps: stepsLogged, water: waterLogged })
+        .then(() => setDataError(''))
+        .catch((err) => setDataError(`Couldn't save today's totals: ${err instanceof Error ? err.message : String(err)}`))
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [today, calorieLogged, proteinLogged, stepsLogged, waterLogged])
+
+  // History comes from the account, so it's the same on every device.
+  useEffect(() => {
+    if (!historyOpen) return
+    let cancelled = false
+    setHistoryLoading(true)
+    loadHistory()
+      .then((entries) => { if (!cancelled) setHistoryEntries(entries) })
+      .catch((err) => { if (!cancelled) setDataError(`Couldn't load history: ${err instanceof Error ? err.message : String(err)}`) })
+      .finally(() => { if (!cancelled) setHistoryLoading(false) })
+    return () => { cancelled = true }
+  }, [historyOpen])
 
   // Photo estimate (AI-powered)
   const [photoMeal, setPhotoMeal] = useState('Breakfast')
@@ -505,7 +449,8 @@ export default function Tracking() {
     setFiber('')
   }
 
-  function saveMeal() {
+  async function saveMeal() {
+    if (savingMeal) return
     const existing = editingId ? mealLogs.find((l) => l.id === editingId) : undefined
     const log: MealLog = {
       id: editingId ?? crypto.randomUUID(),
@@ -524,14 +469,35 @@ export default function Tracking() {
       loggedAt: existing?.loggedAt ?? Date.now(),
       ...(existing?.photo ? { photo: existing.photo } : {}),
     }
-    if (editingId) {
-      setMealLogs((prev) => prev.map((l) => l.id === editingId ? log : l))
-      setEditingId(null)
-    } else {
-      setMealLogs((prev) => [...prev, log])
+    setSavingMeal(true)
+    try {
+      if (editingId) {
+        const saved = await updateMeal(log)
+        setMealLogs((prev) => prev.map((l) => l.id === editingId ? saved : l))
+        setEditingId(null)
+      } else {
+        const saved = await insertMeal(log)
+        setMealLogs((prev) => [...prev, saved])
+      }
+      setDataError('')
+      setCustomName(''); setServing(''); setCalories(''); setProtein(''); setCarbs(''); setFat(''); setFiber('')
+      setMealPreset('0')
+    } catch (err) {
+      setDataError(`Couldn't save the meal: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setSavingMeal(false)
     }
-    setCustomName(''); setServing(''); setCalories(''); setProtein(''); setCarbs(''); setFat(''); setFiber('')
-    setMealPreset('0')
+  }
+
+  async function removeMeal(log: MealLog) {
+    try {
+      await deleteMeal(log.id)
+      setMealLogs((p) => p.filter((l) => l.id !== log.id))
+      if (editingId === log.id) setEditingId(null)
+      setDataError('')
+    } catch (err) {
+      setDataError(`Couldn't delete the meal: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   function loadForEdit(log: MealLog) {
@@ -547,7 +513,7 @@ export default function Tracking() {
     setFiber(log.fiber === null ? '' : String(log.fiber))
   }
 
-  function logPhotoMeal() {
+  async function logPhotoMeal() {
     if (!aiResult) return
     const log: MealLog = {
       id: crypto.randomUUID(),
@@ -562,9 +528,15 @@ export default function Tracking() {
       loggedAt: Date.now(),
       ...(photoPreview ? { photo: photoPreview } : {}),
     }
-    setMealLogs((prev) => [...prev, log])
-    setPhotoPreview(null)
-    setAiResult(null)
+    try {
+      const saved = await insertMeal(log, 'photo')
+      setMealLogs((prev) => [...prev, saved])
+      setPhotoPreview(null)
+      setAiResult(null)
+      setDataError('')
+    } catch (err) {
+      setDataError(`Couldn't save the meal: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -606,6 +578,19 @@ export default function Tracking() {
       <Topbar eyebrow="Daily Log" title="Daily Tracking" />
 
       <main className="flex-1 overflow-y-auto p-5 lg:p-6 space-y-5">
+
+        {/* ── Load / save status ───────────────────────────────── */}
+        {loading && (
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading your tracking…
+          </div>
+        )}
+        {importNotice && (
+          <div className="rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm text-teal-700">{importNotice}</div>
+        )}
+        {dataError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{dataError}</div>
+        )}
 
         {/* ── Synced device metrics ────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -846,8 +831,8 @@ export default function Tracking() {
                 <Input label="Fiber" type="number" min={0} suffix="g" value={fiber}
                   onChange={(e) => setFiber(e.target.value)} />
               </div>
-              <Button onClick={saveMeal} size="sm">
-                {editingId ? 'Save changes' : 'Add meal'}
+              <Button onClick={saveMeal} size="sm" disabled={savingMeal || loading}>
+                {savingMeal ? 'Saving…' : editingId ? 'Save changes' : 'Add meal'}
               </Button>
 
               {/* Meal rows */}
@@ -858,7 +843,7 @@ export default function Tracking() {
                       key={log.id}
                       log={log}
                       onEdit={() => loadForEdit(log)}
-                      onDelete={() => { setMealLogs((p) => p.filter((l) => l.id !== log.id)); if (editingId === log.id) setEditingId(null) }}
+                      onDelete={() => removeMeal(log)}
                     />
                   ))}
                 </div>
@@ -976,6 +961,8 @@ export default function Tracking() {
               </div>
             )}
           </div>
+        ) : historyLoading ? (
+          <p className="text-sm text-slate-400 text-center py-8">Loading history…</p>
         ) : historyEntries.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-8">No history</p>
         ) : (

@@ -66,7 +66,7 @@ export interface Database {
           id: string
           user_id: string
           logged_at: string
-          meal_type: string
+          meal_type: string | null
           name: string
           calories: number
           protein_g: number
@@ -74,9 +74,22 @@ export interface Database {
           fat_g: number | null
           fiber_g: number | null
           serving_description: string | null
-          source: 'manual' | 'photo' | 'api'
+          source: 'manual' | 'photo' | 'api' | null
         }
-        Insert: Omit<Database['public']['Tables']['meal_logs']['Row'], 'id'>
+        Insert: {
+          id?: string
+          user_id: string
+          logged_at?: string
+          meal_type?: string | null
+          name: string
+          calories?: number
+          protein_g?: number
+          carbs_g?: number | null
+          fat_g?: number | null
+          fiber_g?: number | null
+          serving_description?: string | null
+          source?: 'manual' | 'photo' | 'api' | null
+        }
         Update: Partial<Database['public']['Tables']['meal_logs']['Insert']>
         Relationships: []
       }
@@ -85,6 +98,8 @@ export interface Database {
           id: string
           user_id: string
           date: string
+          calories: number | null
+          protein_g: number | null
           steps: number | null
           water_ml: number | null
           sleep_hours: number | null
@@ -94,7 +109,9 @@ export interface Database {
           exercise_minutes: number | null
           notes: string | null
         }
-        Insert: Omit<Database['public']['Tables']['daily_tracking']['Row'], 'id'>
+        Insert: Partial<Omit<Database['public']['Tables']['daily_tracking']['Row'], 'id' | 'user_id'>> & {
+          user_id: string
+        }
         Update: Partial<Database['public']['Tables']['daily_tracking']['Insert']>
         Relationships: []
       }
